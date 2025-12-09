@@ -1,0 +1,12 @@
+{
+  "domain": "digitraffic",
+  "name": "Digitraffic",
+  "codeowners": [
+    "@eemeliru"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/eemeliru/digitraffic",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/eemeliru/digitraffic/issues",
+  "version": "0.1.0"
+}
