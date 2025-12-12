@@ -1,0 +1,46 @@
+# Example: Display Digitraffic Traffic Incidents on Built-in Map Card
+# Note: The full LineString path won't be shown, only the starting point.
+
+
+# Show All Traffic Incidents Automatically
+# Requires: auto-entities card from HACS
+# https://github.com/thomasloven/lovelace-auto-entities
+
+type: custom:auto-entities
+card:
+  type: map
+  default_zoom: 10
+  auto_fit: true
+  title: Traffic Incidents
+filter:
+  include:
+    - entity_id: "sensor.digitraffic_guid*"
+  exclude: []
+
+---
+
+# Combined View - Map + List (Auto-Entities)
+# Automatically shows all incidents on map and detailed list below
+
+type: vertical-stack
+cards:
+  # Map showing all incident locations
+  - type: custom:auto-entities
+    card:
+      type: map
+      default_zoom: 11
+      auto_fit: true
+    filter:
+      include:
+        - entity_id: "sensor.digitraffic_guid*"
+      exclude: []
+
+  # List of all incidents with details
+  - type: custom:auto-entities
+    card:
+      type: entities
+      title: Incident Details
+    filter:
+      include:
+        - entity_id: "sensor.digitraffic_guid*"
+      exclude: []

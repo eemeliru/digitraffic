@@ -1,0 +1,86 @@
+# Automation: Notify on New Traffic Messages
+#
+# This automation monitors a specific traffic message service (by municipality)
+# and sends a mobile notification when a new message is detected.
+#
+# Prerequisites:
+# 1. Home Assistant mobile app installed on your device
+# 2. A configured Digitraffic traffic message service for your municipality
+# 3. Mobile notifications enabled in the app
+# 4. Find your service device ID in Developer Tools → States → look for device_id
+#    or in Settings → Devices & Services → Digitraffic → Your Service
+
+# ============================================================================
+# Example 1: Basic Notification for Specific Service
+# ============================================================================
+
+automation:
+  - alias: "Traffic: Notify New Digitraffic Traffic Message"
+    description: "Send notification when any new traffic message appears."
+
+    trigger:
+      # Trigger when any digitraffic sensor becomes active
+      - platform: state
+        entity_id: sensor.digitraffic_guid*
+        to: "active"
+
+    condition:
+      # Optional: Only notify during commute hours
+      - condition: time
+        after: "06:00:00"
+        before: "20:00:00"
+
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "🚨 New Traffic Message"
+          message: >
+            {{ trigger.to_state.name }}
+
+            Location: {{ state_attr(trigger.entity_id, 'municipalities') }}
+            Type: {{ state_attr(trigger.entity_id, 'situation_type_label') }}
+
+            {{ state_attr(trigger.entity_id, 'description') }}
+
+---
+
+# ============================================================================
+# Example 2: Monitor Specific Service with Situation Type Filter
+# ============================================================================
+
+automation:
+  - alias: "Traffic: Notify Traffic Announcements from Espoo Service"
+    description: "Notify only about Traffic Announcements from Espoo service"
+
+    trigger:
+      - platform: state
+        entity_id: sensor.digitraffic_guid*
+        to: "active"
+
+    condition:
+      # Filter by service name
+      # Only trigger for sensors from a specific service
+      # Replace the service name with your actual service name
+      # Default format: "Traffic: {Municipality} - {Types}"
+      # Example: "Traffic: Helsinki - All types"
+      - condition: template
+        value_template: >
+          {{ device_attr(device_id(trigger.entity_id), 'name') == 'Traffic: Espoo' }}
+      # And only trigger for Traffic Announcements
+      - condition: template
+        value_template: >
+          {{ state_attr(trigger.entity_id, 'situation_type_label') == 'Traffic Announcement' }}
+
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "⚠️ Traffic Announcement"
+          message: >
+            {{ trigger.to_state.name }}
+
+            📍 {{ state_attr(trigger.entity_id, 'municipalities') }}
+            🛣️ Road {{ state_attr(trigger.entity_id, 'road') }}
+
+            {{ state_attr(trigger.entity_id, 'description') }}
+
+---
