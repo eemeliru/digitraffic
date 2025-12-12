@@ -10,11 +10,15 @@ if [[ ! -d "${PWD}/config" ]]; then
     hass --config "${PWD}/config" --script ensure_config
 fi
 
-# Set the path to custom_components
-## This let's us have the structure we want <root>/custom_components/integration_blueprint
-## while at the same time have Home Assistant configuration inside <root>/config
-## without resulting to symlinks.
-export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
+# Create custom_components directory in config if it doesn't exist
+mkdir -p "${PWD}/config/custom_components"
+
+# Create a symlink to our integration in config/custom_components
+# This allows HACS and other integrations to coexist with our development integration
+if [[ ! -L "${PWD}/config/custom_components/digitraffic" ]]; then
+    ln -sf "${PWD}/custom_components/digitraffic" "${PWD}/config/custom_components/digitraffic"
+    echo "Created symlink: config/custom_components/digitraffic -> custom_components/digitraffic"
+fi
 
 # Start Home Assistant
 hass --config "${PWD}/config" --debug
