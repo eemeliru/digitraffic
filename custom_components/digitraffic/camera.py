@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import aiohttp
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import UTC, timedelta, datetime
+from typing import Any
 
+import aiohttp
 from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.device_registry import DeviceInfo, DeviceEntryType
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, ENTITY_TYPE_WEATHERCAM, ATTRIBUTION, DIGITRAFFIC_USER, LOGGER
+from .const import ATTRIBUTION, DIGITRAFFIC_USER, DOMAIN, ENTITY_TYPE_WEATHERCAM, LOGGER
 
 SCAN_INTERVAL = timedelta(minutes=10)
 
@@ -95,6 +96,7 @@ async def async_setup_entry(
                         camera_id,
                         camera_name,
                         preset,
+                        camera_data.get("nearestWeatherStationId"),
                     )
                 )
 
@@ -116,6 +118,7 @@ class DigitrafficWeathercamCamera(Camera):
         camera_id: str,
         camera_name: str,
         preset: dict,
+        nearest_weather_station_id: int | None,
     ) -> None:
         """Initialize the camera."""
         super().__init__()
@@ -127,6 +130,7 @@ class DigitrafficWeathercamCamera(Camera):
         self._preset = preset
         self._preset_id = preset["id"]
         self._image_url = preset.get("imageUrl", "")
+        self._nearest_weather_station_id = nearest_weather_station_id
         # Include camera_id in unique_id to prevent conflicts when multiple cameras
         # have presets with the same ID
         self._attr_unique_id = f"{entry.entry_id}_{camera_id}_{self._preset_id}"
@@ -195,16 +199,16 @@ class DigitrafficWeathercamCamera(Camera):
         return self._last_image
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | None]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        last_updated_str = (
-            self._last_updated.isoformat() if self._last_updated else None
-        )
         return {
             "camera_id": self._camera_id,
             "preset_id": self._preset_id,
             "image_url": self._image_url,
-            "direction": self._preset.get("direction", ""),
+            "direction": self._preset.get("directionCode", ""),
             "presentation_name": self._preset.get("presentationName", ""),
-            "last_updated": last_updated_str,
+            "nearest_weather_station_id": self._nearest_weather_station_id,
+            "last_updated": self._last_updated.isoformat()
+            if self._last_updated
+            else None,
         }

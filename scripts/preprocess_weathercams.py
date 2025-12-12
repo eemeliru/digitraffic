@@ -7,10 +7,13 @@ a static JSON file containing camera ID, presets with presentation names, and
 municipality information. This avoids making many API calls during runtime.
 """
 
+import argparse
 import json
-import requests
+import sys
 import time
 from pathlib import Path
+
+import requests
 
 headers = {"Digitraffic-User": "eemeliru/digitraffic"}
 
@@ -82,6 +85,7 @@ def preprocess_weathercams():
                 "municipality": municipality,
                 "presets": presets,
                 "names": props.get("names", {}),
+                "nearestWeatherStationId": props.get("nearestWeatherStationId"),
             }
 
             print(f"  ✓ {municipality} - {len(presets)} presets")
@@ -95,6 +99,66 @@ def preprocess_weathercams():
 
     if failed:
         print(f"\n⚠ Warning: Failed to fetch {len(failed)} cameras:")
+        for cam_id in failed:
+            print(f"  - {cam_id}")
+
+    return mapping, raw_data
+
+
+def preprocess_from_raw_data(raw_file):
+    """Process weathercam data from existing raw data file."""
+    raw_path = Path(raw_file)
+
+    if not raw_path.exists():
+        print(f"Error: Raw data file not found: {raw_file}")
+        sys.exit(1)
+
+    print(f"Loading raw data from {raw_file}...")
+    with open(raw_path, encoding="utf-8") as f:
+        raw_data = json.load(f)
+
+    print(f"Processing {len(raw_data)} weathercams from raw data...")
+    print()
+
+    mapping = {}
+    failed = []
+
+    for i, (camera_id, details) in enumerate(raw_data.items(), 1):
+        try:
+            props = details["properties"]
+            camera_name = props.get("name", camera_id)
+            municipality = props.get("municipality", "Unknown")
+
+            print(f"[{i}/{len(raw_data)}] Processing {camera_id} ({camera_name})...")
+
+            # Extract preset information (only keep id, presentationName, imageUrl)
+            presets = []
+            for preset in props.get("presets", []):
+                if preset.get("inCollection", False):
+                    presets.append(
+                        {
+                            "id": preset["id"],
+                            "presentationName": preset.get("presentationName", ""),
+                            "imageUrl": preset.get("imageUrl", ""),
+                        }
+                    )
+
+            mapping[camera_id] = {
+                "name": camera_name,
+                "municipality": municipality,
+                "presets": presets,
+                "names": props.get("names", {}),
+                "nearestWeatherStationId": props.get("nearestWeatherStationId"),
+            }
+
+            print(f"  ✓ {municipality} - {len(presets)} presets")
+
+        except Exception as e:
+            print(f"  ✗ Failed: {e}")
+            failed.append(camera_id)
+
+    if failed:
+        print(f"\n⚠ Warning: Failed to process {len(failed)} cameras:")
         for cam_id in failed:
             print(f"  - {cam_id}")
 
@@ -143,21 +207,50 @@ def save_raw_data(raw_data, output_file):
 
 def main():
     """Main entry point."""
-    processed_file = "custom_components/digitraffic/data/weathercam_data.json"
-    raw_file = "custom_components/digitraffic/raw_data/weathercam_raw_data.json"
+    parser = argparse.ArgumentParser(
+        description="Preprocess Digitraffic weathercam data"
+    )
+    parser.add_argument(
+        "--from-raw",
+        action="store_true",
+        help="Process from existing raw data file instead of fetching from API",
+    )
+    parser.add_argument(
+        "--raw-file",
+        default="custom_components/digitraffic/raw_data/weathercam_raw_data.json",
+        help="Path to raw data file (default: custom_components/digitraffic/raw_data/weathercam_raw_data.json)",
+    )
+    parser.add_argument(
+        "--output",
+        default="custom_components/digitraffic/data/weathercam_data.json",
+        help="Path to output processed file (default: custom_components/digitraffic/data/weathercam_data.json)",
+    )
+
+    args = parser.parse_args()
+
+    processed_file = args.output
+    raw_file = args.raw_file
 
     print("=" * 70)
     print("Digitraffic Weathercam Data Preprocessor")
     print("=" * 70)
     print()
 
-    mapping, raw_data = preprocess_weathercams()
+    if args.from_raw:
+        print("Mode: Processing from existing raw data")
+        print()
+        mapping, raw_data = preprocess_from_raw_data(raw_file)
+        # Don't save raw data again when processing from raw
+    else:
+        print("Mode: Fetching from API")
+        print()
+        mapping, raw_data = preprocess_weathercams()
+        save_raw_data(raw_data, raw_file)
 
-    save_raw_data(raw_data, raw_file)
     save_mapping(mapping, processed_file)
 
     print()
-    print("✓ Done! Both processed and raw data files are ready.")
+    print("✓ Done! Processed data file is ready.")
 
 
 if __name__ == "__main__":
