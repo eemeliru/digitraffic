@@ -1,18 +1,15 @@
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.helpers import selector
-import voluptuous as vol
-import logging
-
-import hashlib
 
 from .const import (
     DOMAIN,
-    LOGGER,
-    FINNISH_MUNICIPALITIES,
     ENTITY_TYPE_TRAFFIC_MESSAGES,
     ENTITY_TYPE_WEATHERCAM,
-    SITUATION_TYPES,
+    FINNISH_MUNICIPALITIES,
+    LOGGER,
     SITUATION_TYPE_LABELS,
+    SITUATION_TYPES,
 )
 
 
@@ -22,6 +19,8 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self):
         """Initialize the config flow."""
         self._entity_type = None
+        self._traffic_config = None
+        self._existing_service_name = None
         self._weathercam_municipality = None
         self._weathercam_data = None
         self._weathercam_id = None
@@ -35,21 +34,48 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_traffic_messages(self, user_input=None):
-        """Configure traffic messages."""
+        """Configure traffic messages service - step 1: select filters."""
+        errors = {}
+
         if user_input is not None:
-            user_input["entity_type"] = ENTITY_TYPE_TRAFFIC_MESSAGES
-
-            # Create a descriptive title based on situation types
+            # Check for duplicate configuration
+            municipalities = user_input.get("municipalities", [])
             situation_types = user_input.get("situation_types", SITUATION_TYPES)
-            if len(situation_types) == 1:
-                title_suffix = SITUATION_TYPE_LABELS[situation_types[0]]
-            else:
-                title_suffix = "Multiple Situations"
 
-            return self.async_create_entry(
-                title=f"Traffic Messages - {title_suffix}",
-                data=user_input,
-            )
+            # Sort for consistent comparison
+            sorted_municipalities = sorted(municipalities)
+            sorted_situation_types = sorted(situation_types)
+
+            # Check existing entries
+            for entry in self._async_current_entries():
+                if entry.data.get("entity_type") == ENTITY_TYPE_TRAFFIC_MESSAGES:
+                    # Get existing configuration
+                    existing_municipalities = sorted(
+                        entry.options.get(
+                            "municipalities", entry.data.get("municipalities", [])
+                        )
+                    )
+                    existing_situation_types = sorted(
+                        entry.options.get(
+                            "situation_types",
+                            entry.data.get("situation_types", SITUATION_TYPES),
+                        )
+                    )
+
+                    # Check if configuration matches
+                    if (
+                        sorted_municipalities == existing_municipalities
+                        and sorted_situation_types == existing_situation_types
+                    ):
+                        errors["base"] = "duplicate_config"
+                        # Store the existing service name for error message
+                        self._existing_service_name = entry.title
+                        break
+
+            # If no duplicate, proceed to naming step
+            if not errors:
+                self._traffic_config = user_input
+                return await self.async_step_traffic_messages_name()
 
         situation_type_options = [
             {"value": st, "label": SITUATION_TYPE_LABELS[st]} for st in SITUATION_TYPES
@@ -73,15 +99,86 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(
-                    "include_raw_data", default=False
-                ): selector.BooleanSelector(),
             }
         )
+
+        description_placeholders = {
+            "info": "Each service monitors selected municipalities and creates one sensor per traffic message."
+        }
+
+        # Add existing service name to error message if duplicate
+        if errors.get("base") == "duplicate_config":
+            description_placeholders["existing_service"] = self._existing_service_name
 
         return self.async_show_form(
             step_id="traffic_messages",
             data_schema=schema,
+            errors=errors,
+            description_placeholders=description_placeholders,
+        )
+
+    async def async_step_traffic_messages_name(self, user_input=None):
+        """Configure traffic messages service - step 2: name the service."""
+        errors = {}
+
+        if user_input is not None:
+            service_name = user_input.get("service_name")
+
+            # Check if name is already in use
+            for entry in self._async_current_entries():
+                if entry.title == service_name:
+                    errors["service_name"] = "duplicate_name"
+                    break
+
+            # If no duplicate name, create the entry
+            if not errors:
+                self._traffic_config["entity_type"] = ENTITY_TYPE_TRAFFIC_MESSAGES
+                return self.async_create_entry(
+                    title=service_name,
+                    data=self._traffic_config,
+                )
+
+        # Generate default name suggestion
+        municipalities = self._traffic_config.get("municipalities", [])
+        situation_types = self._traffic_config.get("situation_types", SITUATION_TYPES)
+
+        # Build default title from municipalities and situation types
+        if municipalities:
+            if len(municipalities) == 1:
+                muni_part = municipalities[0]
+            else:
+                muni_part = f"{len(municipalities)} municipalities"
+        else:
+            muni_part = "All municipalities"
+
+        if len(situation_types) == 1:
+            type_part = SITUATION_TYPE_LABELS[situation_types[0]]
+        elif len(situation_types) == len(SITUATION_TYPES):
+            type_part = "All types"
+        else:
+            type_part = f"{len(situation_types)} types"
+
+        default_name = f"Traffic: {muni_part} - {type_part}"
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "service_name", default=default_name
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.TEXT,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="traffic_messages_name",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "info": "Give your traffic message service a name to identify it easily."
+            },
         )
 
     async def async_step_weathercam(self, user_input=None):
@@ -295,7 +392,8 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return filtered
 
     async def async_step_reconfigure(self, user_input=None):
-        """Support reconfiguring an existing config entry from the Integrations UI.
+        """
+        Support reconfiguring an existing config entry from the Integrations UI.
 
         Updates the existing entry instead of creating a new one,
         which allows entities to be updated rather than recreated.
@@ -310,7 +408,7 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Route to appropriate reconfiguration based on entity type
         if entity_type == ENTITY_TYPE_TRAFFIC_MESSAGES:
             return await self._async_reconfigure_traffic_messages(entry, user_input)
-        elif entity_type == ENTITY_TYPE_WEATHERCAM:
+        if entity_type == ENTITY_TYPE_WEATHERCAM:
             return await self._async_reconfigure_weathercam(entry, user_input)
 
         return self.async_abort(reason="unknown_entity_type")
@@ -544,10 +642,11 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class DigitrafficOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for the integration (reconfiguration).
+    """
+    Handle options for the integration (reconfiguration).
 
-    This options flow mirrors the initial config flow and allows the user
-    to change `municipalities`. Options are saved to `entry.options`.
+    This options flow allows the user to change municipalities and situation types.
+    Options are saved to `entry.options`.
     """
 
     def __init__(self, config_entry):
@@ -557,22 +656,52 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        # Get entity type to determine which options to show
+        entity_type = self.config_entry.data.get(
+            "entity_type", ENTITY_TYPE_TRAFFIC_MESSAGES
+        )
+
+        if entity_type == ENTITY_TYPE_TRAFFIC_MESSAGES:
+            return await self._async_traffic_messages_options(user_input)
+
+        # For other entity types, return empty form for now
+        return self.async_show_form(step_id="init", data_schema=vol.Schema({}))
+
+    async def _async_traffic_messages_options(self, user_input=None):
+        """Show options for traffic messages."""
         # Prefer existing options, fall back to initial data
-        current = self.config_entry.options.get(
+        current_municipalities = self.config_entry.options.get(
             "municipalities", self.config_entry.data.get("municipalities", [])
         )
+        current_situation_types = self.config_entry.options.get(
+            "situation_types",
+            self.config_entry.data.get("situation_types", SITUATION_TYPES),
+        )
+
+        situation_type_options = [
+            {"value": st, "label": SITUATION_TYPE_LABELS[st]} for st in SITUATION_TYPES
+        ]
 
         schema = vol.Schema(
             {
                 vol.Optional(
-                    "municipalities", default=current
+                    "municipalities", default=current_municipalities
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=FINNISH_MUNICIPALITIES,
                         multiple=True,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
-                )
+                ),
+                vol.Optional(
+                    "situation_types", default=current_situation_types
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=situation_type_options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
             }
         )
 
@@ -580,7 +709,8 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
 
 
 def async_get_options_flow(config_entry):
-    """Return options flow handler for this config entry.
+    """
+    Return options flow handler for this config entry.
 
     Must be a regular function (not coroutine) that returns an
     OptionsFlow handler instance so Home Assistant can expose the

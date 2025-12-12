@@ -1,13 +1,13 @@
-import hashlib
-
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .const import (
+    ATTRIBUTION,
     DOMAIN,
     ENTITY_TYPE_TRAFFIC_MESSAGES,
     ENTITY_TYPE_WEATHERCAM,
-    SITUATION_TYPES,
     SITUATION_TYPE_LABELS,
 )
 
@@ -27,99 +27,62 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 async def _async_setup_traffic_message_sensors(hass, entry, async_add_entities, data):
-    """Set up traffic message sensors."""
+    """Set up traffic message sensors - one sensor per message."""
     coordinator = data["coordinator"]
 
+    # Track currently active message sensors by situation_id
+    data["active_message_sensors"] = {}
+
     async def _async_add_remove_entities():
-        """Add or remove entities based on current municipality selection."""
-        municipalities = data["municipalities"]
-        include_raw_data = data.get("include_raw_data", False)
-        entities = []
+        """Dynamically add/remove sensors based on active traffic messages."""
         entity_reg = er.async_get(hass)
 
-        # ✅ 1. Optional "Raw" sensor (only if include_raw_data is True)
-        raw_sensor_unique_id = f"{entry.entry_id}_raw"
-        existing_raw = entity_reg.async_get_entity_id(
-            "sensor", DOMAIN, raw_sensor_unique_id
-        )
+        # Get current messages from coordinator
+        messages = coordinator.data or []
 
-        if include_raw_data:
-            # Create raw sensor if it doesn't exist
-            if not existing_raw:
-                entities.append(DigitrafficAllSensor(coordinator, entry))
-        else:
-            # Remove raw sensor if it exists but shouldn't
-            if existing_raw:
-                entity_reg.async_remove(existing_raw)
-
-        # ✅ 2. Manage municipality sensors dynamically
-        # Get situation types filter
-        situation_types = data.get("situation_types", SITUATION_TYPES)
-
-        # Generate a short hash of situation types for unique ID
-        # This allows multiple sensors per municipality with different filters
-        situation_types_str = "_".join(sorted(situation_types))
-        types_hash = hashlib.md5(situation_types_str.encode()).hexdigest()[:8]
-
-        # Track which municipalities should exist
-        desired_unique_ids = {
-            f"{entry.entry_id}_{municipality.lower()}_{types_hash}"
-            for municipality in municipalities
+        # Extract situation IDs from current messages
+        current_situation_ids = {
+            msg.get("properties", {}).get("situationId")
+            for msg in messages
+            if msg.get("properties", {}).get("situationId")
         }
 
-        # Remove sensors for municipalities no longer selected
+        # Get existing message sensor unique IDs for this entry
+        existing_sensors = {}
         for entity_entry in er.async_entries_for_config_entry(
             entity_reg, entry.entry_id
         ):
-            if (
-                entity_entry.domain == "sensor"
-                and entity_entry.unique_id != raw_sensor_unique_id
-                and entity_entry.unique_id not in desired_unique_ids
-            ):
-                entity_reg.async_remove(entity_entry.entity_id)
+            if entity_entry.domain == "sensor":
+                # Extract situation_id from unique_id pattern
+                if "_msg_" in entity_entry.unique_id:
+                    parts = entity_entry.unique_id.split("_msg_")
+                    if len(parts) == 2:
+                        situation_id = parts[1]
+                        existing_sensors[situation_id] = entity_entry.entity_id
 
-        # Add sensors for new municipalities
-        # Count existing sensors per municipality to generate numbered suffixes
-        municipality_counts = {}
-        for entity_entry in er.async_entries_for_config_entry(
-            entity_reg, entry.entry_id
-        ):
-            if (
-                entity_entry.domain == "sensor"
-                and entity_entry.unique_id != raw_sensor_unique_id
-            ):
-                # Extract municipality from unique_id pattern: {entry_id}_{municipality}_{hash}
-                parts = entity_entry.unique_id.split("_")
-                if len(parts) >= 3:
-                    muni = parts[1]  # municipality part
-                    municipality_counts[muni] = municipality_counts.get(muni, 0) + 1
+        # Remove sensors for messages that are no longer active
+        removed_ids = set(existing_sensors.keys()) - current_situation_ids
+        for situation_id in removed_ids:
+            entity_id = existing_sensors[situation_id]
+            entity_reg.async_remove(entity_id)
+            if situation_id in data["active_message_sensors"]:
+                del data["active_message_sensors"][situation_id]
 
-        for municipality in municipalities:
-            unique_id = f"{entry.entry_id}_{municipality.lower()}_{types_hash}"
-            existing_entity = entity_reg.async_get_entity_id(
-                "sensor", DOMAIN, unique_id
-            )
+        # Add sensors for new messages
+        new_entities = []
+        new_ids = current_situation_ids - set(existing_sensors.keys())
 
-            if not existing_entity:
-                # Determine suffix number for this municipality
-                muni_lower = municipality.lower()
-                count = municipality_counts.get(muni_lower, 0)
-                municipality_counts[muni_lower] = count + 1
-                suffix_number = count + 1  # Start from 1 for first, 2 for second, etc.
-
-                entities.append(
-                    DigitrafficMunicipalitySensor(
-                        coordinator,
-                        entry,
-                        municipality,
-                        situation_types,
-                        types_hash,
-                        suffix_number,
-                    )
+        for msg in messages:
+            situation_id = msg.get("properties", {}).get("situationId")
+            if situation_id in new_ids:
+                sensor = DigitrafficTrafficMessageSensor(
+                    coordinator, entry, msg, situation_id
                 )
+                new_entities.append(sensor)
+                data["active_message_sensors"][situation_id] = sensor
 
-        if entities:
-            async_add_entities(entities)
+        if new_entities:
+            async_add_entities(new_entities)
 
     # Store the callback for future use during reconfiguration
     data["add_entities_callback"] = _async_add_remove_entities
@@ -131,18 +94,196 @@ async def _async_setup_traffic_message_sensors(hass, entry, async_add_entities, 
 async def _async_setup_weathercam_sensors(hass, entry, async_add_entities, data):
     """Set up weathercam sensors (placeholder)."""
     # TODO: Implement weathercam sensor setup
-    pass
 
 
 # -----------------------
-# ✅ GLOBAL SENSOR
+# ✅ PER-MESSAGE SENSOR
+# -----------------------
+
+
+class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for individual traffic message."""
+
+    _attr_attribution = ATTRIBUTION
+
+    def __init__(self, coordinator, entry, message_data, situation_id):
+        """Initialize the traffic message sensor."""
+        super().__init__(coordinator)
+
+        self._situation_id = situation_id
+        self._entry_id = entry.entry_id
+
+        # Generate unique ID based on situation ID
+        self._attr_unique_id = f"digitraffic_{situation_id}"
+
+        # Extract initial message details
+        properties = message_data.get("properties", {})
+        situation_type = properties.get("situationType", "UNKNOWN")
+
+        # Set icon based on situation type
+        icon_map = {
+            "TRAFFIC_ANNOUNCEMENT": "mdi:alert-circle",
+            "ROAD_WORK": "mdi:road-variant",
+            "WEIGHT_RESTRICTION": "mdi:weight",
+            "EXEMPTED_TRANSPORT": "mdi:truck-cargo-container",
+        }
+        self._attr_icon = icon_map.get(situation_type, "mdi:traffic-cone")
+
+        # Set device info to group all messages from this service together
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="Fintraffic",
+            model="Digitraffic",
+            entry_type=None,
+        )
+
+    @property
+    def _message_data(self):
+        """Get current message data from coordinator."""
+        messages = self.coordinator.data or []
+        for msg in messages:
+            if msg.get("properties", {}).get("situationId") == self._situation_id:
+                return msg
+        return None
+
+    @property
+    def name(self):
+        """Return the name of the sensor using the message title."""
+        msg = self._message_data
+        if msg:
+            announcements = msg.get("properties", {}).get("announcements", [])
+            if announcements and announcements[0].get("title"):
+                return announcements[0]["title"]
+        # Fallback to situation ID if no title available
+        return f"Traffic Message {self._situation_id}"
+
+    @property
+    def native_value(self):
+        """Return state - 'active' if message exists, 'inactive' otherwise."""
+        return "active" if self._message_data else "inactive"
+
+    @property
+    def available(self):
+        """Return True if message still exists in coordinator data."""
+        return self._message_data is not None
+
+    @property
+    def extra_state_attributes(self):
+        """Return message details as attributes."""
+        msg = self._message_data
+        if not msg:
+            return {}
+
+        properties = msg.get("properties", {})
+        geometry = msg.get("geometry", {})
+        announcements = properties.get("announcements", [])
+
+        # Extract title
+        title = announcements[0].get("title") if announcements else None
+
+        # Extract and combine description with features
+        description_parts = []
+        if announcements:
+            # Add comment/description
+            for ann in announcements:
+                if ann.get("comment"):
+                    description_parts.append(ann["comment"])
+
+            # Add features
+            features = []
+            for ann in announcements:
+                for feat in ann.get("features", []):
+                    if feat.get("name"):
+                        features.append(feat["name"])
+            if features:
+                description_parts.append(", ".join(features))
+
+        description = " | ".join(description_parts) if description_parts else None
+
+        # Extract location details
+        municipalities = []
+        road = None
+        direction = None
+
+        if announcements and announcements[0].get("locationDetails"):
+            location = announcements[0]["locationDetails"].get(
+                "roadAddressLocation", {}
+            )
+            primary_muni = location.get("primaryPoint", {}).get("municipality")
+            secondary_muni = location.get("secondaryPoint", {}).get("municipality")
+
+            # Combine municipalities
+            if primary_muni:
+                municipalities.append(primary_muni)
+            if secondary_muni and secondary_muni != primary_muni:
+                municipalities.append(secondary_muni)
+
+            road = location.get("primaryPoint", {}).get("roadNumber")
+            direction = location.get("direction")
+
+        # Build GeoJSON with minimal required fields
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": geometry.get("type", "LineString"),
+                "coordinates": geometry.get("coordinates", []),
+            },
+            "properties": {
+                "title": title,
+                "situation_id": self._situation_id,
+                "situation_type": properties.get("situationType"),
+            },
+        }
+
+        # Extract latitude and longitude from first coordinate
+        coordinates = geometry.get("coordinates", [])
+        latitude = None
+        longitude = None
+        if coordinates and len(coordinates) > 0:
+            # Handle different geometry types
+            first_coord = coordinates[0]
+            # If it's a LineString, first_coord is [lon, lat]
+            # If it's a Point, coordinates is [lon, lat] directly
+            if isinstance(first_coord, list) and len(first_coord) >= 2:
+                longitude = first_coord[0]
+                latitude = first_coord[1]
+            elif isinstance(coordinates[0], (int, float)) and len(coordinates) >= 2:
+                # Point geometry: coordinates = [lon, lat]
+                longitude = coordinates[0]
+                latitude = coordinates[1]
+
+        # Build attributes in requested order
+        attributes = {
+            "situation_id": self._situation_id,
+            "title": title,
+            "description": description,
+            "latitude": latitude,
+            "longitude": longitude,
+            "situation_type_label": SITUATION_TYPE_LABELS.get(
+                properties.get("situationType", ""), "Unknown"
+            ),
+            "release_time": properties.get("releaseTime"),
+            "updated_time": properties.get("dataUpdatedTime"),
+            "municipalities": ", ".join(municipalities) if municipalities else None,
+            "road": road,
+            "direction": direction,
+            "geojson": geojson,
+        }
+
+        return attributes
+
+
+# -----------------------
+# ✅ LEGACY SENSOR (kept for backward compatibility during migration)
 # -----------------------
 
 
 class DigitrafficAllSensor(CoordinatorEntity, SensorEntity):
+    """Legacy sensor showing all messages (for backward compatibility)."""
+
     def __init__(self, coordinator, entry):
         super().__init__(coordinator)
-
         self._attr_name = "Digitraffic Traffic Messages Raw"
         self._attr_unique_id = f"{entry.entry_id}_raw"
 
@@ -163,12 +304,9 @@ class DigitrafficAllSensor(CoordinatorEntity, SensorEntity):
         }
 
 
-# -----------------------
-# ✅ MUNICIPALITY SENSOR
-# -----------------------
-
-
 class DigitrafficMunicipalitySensor(CoordinatorEntity, SensorEntity):
+    """Legacy municipality sensor (for backward compatibility)."""
+
     def __init__(
         self,
         coordinator,

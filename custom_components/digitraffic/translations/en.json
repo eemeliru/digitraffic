@@ -68,7 +68,9 @@
         "error": {
             "auth": "Username/Password is wrong.",
             "connection": "Unable to connect to the server.",
-            "unknown": "Unknown error occurred."
+            "unknown": "Unknown error occurred.",
+            "duplicate_config": "A service with this configuration already exists: {existing_service}. Please use different municipalities or situation types.",
+            "duplicate_name": "A service with this name already exists. Please choose a different name."
         },
         "abort": {
             "already_configured": "This entry is already configured.",

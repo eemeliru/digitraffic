@@ -10,10 +10,12 @@ class DigitrafficApiClient:
         self._session = session
 
     async def fetch_active_messages(self, situation_types=None):
-        """Fetch active traffic messages.
+        """
+        Fetch active traffic messages.
 
         Args:
             situation_types: List of situation types to fetch. If None, fetches all types.
+
         """
         params = {
             "inactiveHours": 0,
