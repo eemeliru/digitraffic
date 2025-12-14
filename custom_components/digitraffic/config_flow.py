@@ -1,3 +1,11 @@
+"""Config flow for Digitraffic integration."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.helpers import selector
@@ -12,11 +20,16 @@ from .const import (
     SITUATION_TYPES,
 )
 
+if TYPE_CHECKING:
+    from homeassistant.data_entry_flow import FlowResult
+
 
 class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Digitraffic."""
+
     VERSION = 1
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the config flow."""
         self._entity_type = None
         self._traffic_config = None
@@ -26,15 +39,31 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._weathercam_id = None
         self._weathercam_name = None
 
-    async def async_step_user(self, user_input=None):
-        """Handle the initial step - show menu to choose entity type."""
+    async def async_step_user(
+        self, _user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Handle the initial step - show menu to choose entity type.
+
+        Returns:
+            Flow result with menu options.
+
+        """
         return self.async_show_menu(
             step_id="user",
             menu_options=["traffic_messages", "weathercam"],
         )
 
-    async def async_step_traffic_messages(self, user_input=None):
-        """Configure traffic messages service - step 1: select filters."""
+    async def async_step_traffic_messages(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Configure traffic messages service - step 1: select filters.
+
+        Returns:
+            Flow result with form or next step.
+
+        """
         errors = {}
 
         if user_input is not None:
@@ -103,7 +132,10 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         description_placeholders = {
-            "info": "Each service monitors selected municipalities and creates one sensor per traffic message."
+            "info": (
+                "Each service monitors selected municipalities and creates "
+                "one sensor per traffic message."
+            )
         }
 
         # Add existing service name to error message if duplicate
@@ -117,8 +149,16 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders=description_placeholders,
         )
 
-    async def async_step_traffic_messages_name(self, user_input=None):
-        """Configure traffic messages service - step 2: name the service."""
+    async def async_step_traffic_messages_name(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Configure traffic messages service - step 2: name the service.
+
+        Returns:
+            Flow result with form or config entry.
+
+        """
         errors = {}
 
         if user_input is not None:
@@ -177,12 +217,22 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             errors=errors,
             description_placeholders={
-                "info": "Give your traffic message service a name to identify it easily."
+                "info": (
+                    "Give your traffic message service a name to identify it easily."
+                )
             },
         )
 
-    async def async_step_weathercam(self, user_input=None):
-        """Configure weathercam - step 1: select municipality."""
+    async def async_step_weathercam(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Configure weathercam - step 1: select municipality.
+
+        Returns:
+            Flow result with form or next step.
+
+        """
         # Check if a weathercam entry already exists
         existing_entries = [
             entry
@@ -227,8 +277,16 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
         )
 
-    async def async_step_weathercam_select(self, user_input=None):
-        """Configure weathercam - step 2: select specific camera."""
+    async def async_step_weathercam_select(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Configure weathercam - step 2: select specific camera.
+
+        Returns:
+            Flow result with form or next step.
+
+        """
         if user_input is not None:
             # Store selected camera and move to preset selection
             self._weathercam_id = user_input["weathercam_id"]
@@ -281,8 +339,16 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"municipality": self._weathercam_municipality},
         )
 
-    async def async_step_weathercam_presets(self, user_input=None):
-        """Configure weathercam - step 3: select camera presets (directions)."""
+    async def async_step_weathercam_presets(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Configure weathercam - step 3: select camera presets (directions).
+
+        Returns:
+            Flow result with form or config entry.
+
+        """
         if user_input is not None:
             # Create entry with selected weathercam and presets in a list
             selected_presets = user_input["presets"]
@@ -342,26 +408,28 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"camera_name": self._weathercam_name},
         )
 
-    async def _async_fetch_weathercam_data(self):
-        """Load weathercam data from static JSON file."""
-        import json
-        from pathlib import Path
+    @staticmethod
+    async def _async_fetch_weathercam_data() -> dict[str, Any]:
+        """
+        Load weathercam data from static JSON file.
 
-        # Load from static data file in data/ folder
-        data_file = Path(__file__).parent / "data" / "weathercam_data.json"
+        Returns:
+            Dict containing weathercam data.
 
-        if not data_file.exists():
-            return {}
+        """
+        data_path = Path(__file__).parent / "data" / "weathercam_data.json"
+        with data_path.open(encoding="utf-8") as f:
+            return json.load(f)
 
-        def _load_data():
-            """Load data in executor."""
-            with data_file.open(encoding="utf-8") as f:
-                return json.load(f)
+    @staticmethod
+    def _get_municipalities_with_cameras(cameras: dict[str, Any]) -> list[str]:
+        """
+        Get a list of unique municipalities that have weathercams.
 
-        return await self.hass.async_add_executor_job(_load_data)
+        Returns:
+            List of municipality names.
 
-    def _get_municipalities_with_cameras(self, cameras):
-        """Get a list of unique municipalities that have weathercams."""
+        """
         municipalities = set()
 
         for camera_data in cameras.values():
@@ -371,8 +439,17 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return list(municipalities)
 
-    def _filter_cameras_by_municipality(self, cameras, municipality):
-        """Filter cameras by municipality from the static data."""
+    @staticmethod
+    def _filter_cameras_by_municipality(
+        cameras: dict[str, Any], municipality: str
+    ) -> list[dict[str, Any]]:
+        """
+        Filter cameras by municipality from the static data.
+
+        Returns:
+            List of camera dictionaries with id and name.
+
+        """
         filtered = []
 
         for camera_id, camera_data in cameras.items():
@@ -391,12 +468,18 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return filtered
 
-    async def async_step_reconfigure(self, user_input=None):
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """
         Support reconfiguring an existing config entry from the Integrations UI.
 
         Updates the existing entry instead of creating a new one,
         which allows entities to be updated rather than recreated.
+
+        Returns:
+            Flow result with reconfiguration form or next step.
+
         """
         entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
 
@@ -413,8 +496,18 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_abort(reason="unknown_entity_type")
 
-    async def _async_reconfigure_traffic_messages(self, entry, user_input=None):
-        """Reconfigure traffic messages entry."""
+    async def _async_reconfigure_traffic_messages(
+        self,
+        entry: config_entries.ConfigEntry,
+        user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """
+        Reconfigure traffic messages entry.
+
+        Returns:
+            Flow result with form or abort.
+
+        """
         if user_input is not None:
             user_input["entity_type"] = ENTITY_TYPE_TRAFFIC_MESSAGES
             self.hass.config_entries.async_update_entry(
@@ -464,8 +557,18 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
         )
 
-    async def _async_reconfigure_weathercam(self, entry, user_input=None):
-        """Reconfigure weathercam entry - allow adding new cameras."""
+    async def _async_reconfigure_weathercam(
+        self,
+        _entry: config_entries.ConfigEntry,
+        _user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """
+        Reconfigure weathercam entry - allow adding new cameras.
+
+        Returns:
+            Flow result with next step.
+
+        """
         # Reset instance variables for new camera selection
         self._weathercam_municipality = None
         self._weathercam_data = None
@@ -475,8 +578,16 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Start municipality selection
         return await self.async_step_reconfigure_weathercam_municipality()
 
-    async def async_step_reconfigure_weathercam_municipality(self, user_input=None):
-        """Step 1: Select municipality for new camera."""
+    async def async_step_reconfigure_weathercam_municipality(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Step 1: Select municipality for new camera.
+
+        Returns:
+            Flow result with form or next step.
+
+        """
         if user_input is not None:
             self._weathercam_municipality = user_input["municipality"]
             return await self.async_step_reconfigure_weathercam_camera()
@@ -509,8 +620,16 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_reconfigure_weathercam_camera(self, user_input=None):
-        """Step 2: Select camera in the chosen municipality."""
+    async def async_step_reconfigure_weathercam_camera(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Step 2: Select camera in the chosen municipality.
+
+        Returns:
+            Flow result with form or next step.
+
+        """
         if user_input is not None:
             self._weathercam_id = user_input["weathercam_id"]
 
@@ -567,8 +686,16 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"municipality": self._weathercam_municipality},
         )
 
-    async def async_step_reconfigure_weathercam_presets(self, user_input=None):
-        """Step 3: Select presets for the chosen camera."""
+    async def async_step_reconfigure_weathercam_presets(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Step 3: Select presets for the chosen camera.
+
+        Returns:
+            Flow result with form or abort.
+
+        """
         entry = self._get_reconfigure_entry()
 
         if user_input is not None:
@@ -649,10 +776,20 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
     Options are saved to `entry.options`.
     """
 
-    def __init__(self, config_entry):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
         self.config_entry = config_entry
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Manage the options.
+
+        Returns:
+            Flow result with form or options entry.
+
+        """
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -667,8 +804,16 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
         # For other entity types, return empty form for now
         return self.async_show_form(step_id="init", data_schema=vol.Schema({}))
 
-    async def _async_traffic_messages_options(self, user_input=None):
-        """Show options for traffic messages."""
+    async def _async_traffic_messages_options(
+        self, _user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Show options for traffic messages.
+
+        Returns:
+            Flow result with options form.
+
+        """
         # Prefer existing options, fall back to initial data
         current_municipalities = self.config_entry.options.get(
             "municipalities", self.config_entry.data.get("municipalities", [])
@@ -708,12 +853,18 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="init", data_schema=schema)
 
 
-def async_get_options_flow(config_entry):
+def async_get_options_flow(
+    config_entry: config_entries.ConfigEntry,
+) -> DigitrafficOptionsFlow:
     """
     Return options flow handler for this config entry.
 
     Must be a regular function (not coroutine) that returns an
     OptionsFlow handler instance so Home Assistant can expose the
     "Options" button for existing entries.
+
+    Returns:
+        DigitrafficOptionsFlow instance.
+
     """
     return DigitrafficOptionsFlow(config_entry)

@@ -1,15 +1,31 @@
+"""Digitraffic integration for Home Assistant."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from homeassistant.const import Platform
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DigitrafficApiClient
+from .const import DOMAIN, ENTITY_TYPE_TRAFFIC_MESSAGES, ENTITY_TYPE_WEATHERCAM
 from .coordinator import DigitrafficDataUpdateCoordinator
 
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+
 PLATFORMS = [Platform.SENSOR, Platform.CAMERA]
-from .const import DOMAIN, ENTITY_TYPE_TRAFFIC_MESSAGES, ENTITY_TYPE_WEATHERCAM
 
 
-async def async_setup_entry(hass, entry):
-    """Set up Digitraffic from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """
+    Set up Digitraffic from a config entry.
+
+    Returns:
+        True if setup was successful, False otherwise.
+
+    """
     entity_type = entry.data.get("entity_type", ENTITY_TYPE_TRAFFIC_MESSAGES)
 
     # Route to appropriate setup based on entity type
@@ -21,8 +37,16 @@ async def async_setup_entry(hass, entry):
     return False
 
 
-async def _async_setup_traffic_messages(hass, entry):
-    """Set up traffic messages service."""
+async def _async_setup_traffic_messages(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> bool:
+    """
+    Set up traffic messages service.
+
+    Returns:
+        True if setup was successful.
+
+    """
     session = async_get_clientsession(hass)
 
     # Prefer options (from reconfigure) but fall back to initial config data
@@ -51,7 +75,7 @@ async def _async_setup_traffic_messages(hass, entry):
     }
 
     # Update configuration when options change
-    async def _async_update_options(hass, entry):
+    async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Handle options update - update coordinator config and refresh entities."""
         new_municipalities = entry.options.get(
             "municipalities", entry.data.get("municipalities", [])
@@ -82,21 +106,24 @@ async def _async_setup_traffic_messages(hass, entry):
     return True
 
 
-async def _async_setup_weathercam(hass, entry):
-    """Set up weathercam."""
-    session = async_get_clientsession(hass)
+async def _async_setup_weathercam(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """
+    Set up weathercam cameras.
 
-    # Placeholder for weathercam setup - will be implemented later
+    Returns:
+        True if setup was successful.
+
+    """
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "entity_type": ENTITY_TYPE_WEATHERCAM,
         "entry": entry,
     }
 
-    # Placeholder update listener for weathercam
-    async def _async_update_options(hass, entry):
-        """Handle options update for weathercam."""
-        # Will be implemented when weathercam entities are added
+    async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Handle options update for weathercam cameras."""
+        # Reload the entry when options change
+        await hass.config_entries.async_reload(entry.entry_id)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_options))
 
@@ -104,8 +131,14 @@ async def _async_setup_weathercam(hass, entry):
     return True
 
 
-async def async_unload_entry(hass, entry):
-    """Unload a config entry."""
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """
+    Unload a config entry.
+
+    Returns:
+        True if unload was successful.
+
+    """
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:

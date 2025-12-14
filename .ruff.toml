@@ -13,6 +13,7 @@ ignore = [
     "D212", # multi-line-summary-first-line (incompatible with formatter)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+    "CPY001", # copyright
 ]
 
 [lint.flake8-pytest-style]
@@ -23,3 +24,6 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+"scripts/preprocess_weathercams.py" = ["T201"]  # Allow print statements in preprocessing script

@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from homeassistant.components.camera import Camera
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import ATTRIBUTION, DIGITRAFFIC_USER, DOMAIN, ENTITY_TYPE_WEATHERCAM, LOGGER
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 SCAN_INTERVAL = timedelta(minutes=10)
 
@@ -23,6 +25,9 @@ SCAN_INTERVAL = timedelta(minutes=10)
 def _load_weathercam_data(data_file: Path) -> dict:
     """
     Load weathercam data from file (executed in executor).
+
+    Args:
+        data_file: Path to the weathercam data JSON file.
 
     Returns:
         Dictionary containing weathercam data.
@@ -93,10 +98,14 @@ async def async_setup_entry(
                     DigitrafficWeathercamCamera(
                         hass,
                         entry,
-                        camera_id,
-                        camera_name,
-                        preset,
-                        camera_data.get("nearestWeatherStationId"),
+                        {
+                            "camera_id": camera_id,
+                            "camera_name": camera_name,
+                            "preset": preset,
+                            "nearest_weather_station_id": camera_data.get(
+                                "nearestWeatherStationId"
+                            ),
+                        },
                     )
                 )
 
@@ -115,27 +124,24 @@ class DigitrafficWeathercamCamera(Camera):
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        camera_id: str,
-        camera_name: str,
-        preset: dict,
-        nearest_weather_station_id: int | None,
+        camera_data: dict[str, Any],
     ) -> None:
         """Initialize the camera."""
         super().__init__()
 
         self._hass = hass
         self._entry = entry
-        self._camera_id = camera_id
-        self._camera_name = camera_name
-        self._preset = preset
-        self._preset_id = preset["id"]
-        self._image_url = preset.get("imageUrl", "")
-        self._nearest_weather_station_id = nearest_weather_station_id
+        self._camera_id = camera_data["camera_id"]
+        self._camera_name = camera_data["camera_name"]
+        self._preset = camera_data["preset"]
+        self._preset_id = self._preset["id"]
+        self._image_url = self._preset.get("imageUrl", "")
+        self._nearest_weather_station_id = camera_data.get("nearest_weather_station_id")
         # Include camera_id in unique_id to prevent conflicts when multiple cameras
         # have presets with the same ID
-        self._attr_unique_id = f"{entry.entry_id}_{camera_id}_{self._preset_id}"
-        preset_name = preset.get("presentationName", self._preset_id)
-        self._attr_name = f"{camera_name} - {preset_name}"
+        self._attr_unique_id = f"{entry.entry_id}_{self._camera_id}_{self._preset_id}"
+        preset_name = self._preset.get("presentationName", self._preset_id)
+        self._attr_name = f"{self._camera_name} - {preset_name}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Digitraffic Weathercams",
