@@ -73,12 +73,14 @@ def _async_setup_traffic_message_sensors(
         for entity_entry in er.async_entries_for_config_entry(
             entity_reg, entry.entry_id
         ):
-            if entity_entry.domain == "sensor" and "_msg_" in entity_entry.unique_id:
-                # Extract situation_id from unique_id pattern
-                parts = entity_entry.unique_id.split("_msg_")
-                if len(parts) == _COORDINATE_PAIR_LENGTH:
-                    situation_id = parts[1]
-                    existing_sensors[situation_id] = entity_entry.entity_id
+            # Check if this is a traffic message sensor
+            if entity_entry.domain == "sensor" and entity_entry.unique_id.startswith(
+                "digitraffic_GUID"
+            ):
+                # Extract situation_id from unique_id
+                # (format: digitraffic_GUID...)
+                situation_id = entity_entry.unique_id.replace("digitraffic_", "", 1)
+                existing_sensors[situation_id] = entity_entry.entity_id
 
         # Remove sensors for messages that are no longer active
         removed_ids = set(existing_sensors.keys()) - current_situation_ids
@@ -134,6 +136,7 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
     """Sensor for individual traffic message."""
 
     _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = False
 
     def __init__(
         self,
@@ -149,7 +152,7 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
         self._entry_id = entry.entry_id
 
         # Generate unique ID based on situation ID
-        self._attr_unique_id = f"digitraffic_{situation_id}"
+        self._attr_unique_id = f"digitraffic_tm_{situation_id}"
 
         # Extract initial message details
         properties = message_data.get("properties", {})
@@ -163,6 +166,7 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
             "EXEMPTED_TRANSPORT": "mdi:truck-cargo-container",
         }
         self._attr_icon = icon_map.get(situation_type, "mdi:traffic-cone")
+        self.entity_id = f"sensor.digitraffic_tm_{situation_id}"
 
         # Set device info to group all messages from this service together
         self._attr_device_info = DeviceInfo(

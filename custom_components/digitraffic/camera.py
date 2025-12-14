@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from homeassistant.components.camera import Camera
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
@@ -52,14 +53,12 @@ async def async_setup_entry(
 
     # Get list of cameras from entry data
     cameras_config = entry.data.get("cameras", [])
-
     if not cameras_config:
         LOGGER.error("No cameras found in config entry")
         return
 
-    # Load weathercam data to get preset details
+    # Load weathercam data
     data_file = Path(__file__).parent / "data" / "weathercam_data.json"
-
     if not data_file.exists():
         LOGGER.error("Weathercam data file not found")
         return
@@ -68,7 +67,67 @@ async def async_setup_entry(
         _load_weathercam_data, data_file
     )
 
-    # Create camera entities for all configured cameras and their presets
+    # Perform entity registry cleanup
+    expected_preset_ids = _get_expected_preset_ids(cameras_config)
+    _cleanup_removed_entities(hass, entry, expected_preset_ids)
+
+    # Create camera entities (all configured ones, Home Assistant handles duplicates)
+    cameras = _create_camera_entities(hass, entry, cameras_config, weathercam_data)
+
+    LOGGER.info("Created %d new weathercam camera entities", len(cameras))
+    if cameras:
+        async_add_entities(cameras)
+
+
+def _get_expected_preset_ids(cameras_config: list[dict]) -> set[str]:
+    """
+    Get set of expected preset IDs from camera configuration.
+
+    Returns:
+        Set of preset IDs that should exist based on config.
+
+    """
+    expected_preset_ids = set()
+    for camera_config in cameras_config:
+        selected_presets = camera_config.get("presets", [])
+        expected_preset_ids.update(selected_presets)
+    return expected_preset_ids
+
+
+def _cleanup_removed_entities(
+    hass: HomeAssistant, entry: ConfigEntry, expected_preset_ids: set[str]
+) -> None:
+    """Remove entities that are no longer in the configuration."""
+    entity_reg = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(entity_reg, entry.entry_id):
+        if entity_entry.domain != "camera":
+            continue
+        if not entity_entry.unique_id.startswith("digitraffic_"):
+            continue
+
+        preset_id = entity_entry.unique_id.replace("digitraffic_", "", 1)
+        if preset_id not in expected_preset_ids:
+            LOGGER.info(
+                "Removing weathercam entity %s (preset %s no longer in config)",
+                entity_entry.entity_id,
+                preset_id,
+            )
+            entity_reg.async_remove(entity_entry.entity_id)
+
+
+def _create_camera_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    cameras_config: list[dict],
+    weathercam_data: dict,
+) -> list[DigitrafficWeathercamCamera]:
+    """
+    Create camera entities for configured presets.
+
+    Returns:
+        List of camera entities to be added.
+
+    """
     cameras = []
     LOGGER.info(
         "Setting up weathercam cameras. Total configured cameras: %d",
@@ -90,7 +149,6 @@ async def async_setup_entry(
         camera_data = weathercam_data.get(camera_id, {})
         all_presets = camera_data.get("presets", [])
 
-        # Create a camera entity for each selected preset
         for preset in all_presets:
             preset_id = preset["id"]
             if preset_id in selected_presets:
@@ -109,16 +167,15 @@ async def async_setup_entry(
                     )
                 )
 
-    LOGGER.info("Created %d weathercam camera entities", len(cameras))
-
-    if cameras:
-        async_add_entities(cameras)
+    return cameras
 
 
 class DigitrafficWeathercamCamera(Camera):
     """Representation of a Digitraffic weathercam camera."""
 
     _attr_attribution = ATTRIBUTION
+    _attr_entity_registry_enabled_default = True
+    _attr_has_entity_name = False
 
     def __init__(
         self,
@@ -137,11 +194,11 @@ class DigitrafficWeathercamCamera(Camera):
         self._preset_id = self._preset["id"]
         self._image_url = self._preset.get("imageUrl", "")
         self._nearest_weather_station_id = camera_data.get("nearest_weather_station_id")
-        # Include camera_id in unique_id to prevent conflicts when multiple cameras
-        # have presets with the same ID
-        self._attr_unique_id = f"{entry.entry_id}_{self._camera_id}_{self._preset_id}"
+
+        self._attr_unique_id = f"{entry.entry_id}_wc_{self._preset_id}"
         preset_name = self._preset.get("presentationName", self._preset_id)
         self._attr_name = f"{self._camera_name} - {preset_name}"
+        self.entity_id = f"camera.digitraffic_wc_{self._preset_id}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Digitraffic Weathercams",

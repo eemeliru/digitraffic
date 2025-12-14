@@ -98,7 +98,7 @@ async def _async_setup_traffic_messages(
         # Trigger sensor platform update if callback is available
         if "add_entities_callback" in hass.data[DOMAIN][entry.entry_id]:
             callback = hass.data[DOMAIN][entry.entry_id]["add_entities_callback"]
-            await callback()
+            callback()
 
     entry.async_on_unload(entry.add_update_listener(_async_update_options))
 

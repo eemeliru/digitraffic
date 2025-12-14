@@ -29,6 +29,19 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> DigitrafficOptionsFlow:
+        """
+        Get the options flow for this handler.
+
+        Returns:
+            DigitrafficOptionsFlow instance.
+
+        """
+        return DigitrafficOptionsFlow(config_entry)
+
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._entity_type = None
@@ -776,10 +789,6 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
     Options are saved to `entry.options`.
     """
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -800,6 +809,8 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
 
         if entity_type == ENTITY_TYPE_TRAFFIC_MESSAGES:
             return await self._async_traffic_messages_options(user_input)
+        if entity_type == ENTITY_TYPE_WEATHERCAM:
+            return await self.async_step_manage_weathercams(user_input)
 
         # For other entity types, return empty form for now
         return self.async_show_form(step_id="init", data_schema=vol.Schema({}))
@@ -852,19 +863,145 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=schema)
 
+    async def async_step_manage_weathercams(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """
+        Manage weathercam cameras - allow selecting which cameras/presets to keep.
 
-def async_get_options_flow(
-    config_entry: config_entries.ConfigEntry,
-) -> DigitrafficOptionsFlow:
+        Returns:
+            Flow result with form or options entry.
+
+        """
+        if user_input is not None:
+            return await self._save_weathercam_selection(user_input)
+
+        return await self._show_weathercam_management_form()
+
+    async def _save_weathercam_selection(
+        self, user_input: dict[str, Any]
+    ) -> FlowResult:
+        """
+        Save user's weathercam preset selection.
+
+        Returns:
+            Flow result with entry creation.
+
+        """
+        selected_presets = user_input.get("presets", [])
+        existing_cameras = self.config_entry.data.get("cameras", [])
+        updated_cameras = []
+
+        for camera in existing_cameras:
+            camera_presets = [
+                p for p in camera.get("presets", []) if p in selected_presets
+            ]
+            if camera_presets:
+                updated_camera = camera.copy()
+                updated_camera["presets"] = camera_presets
+                updated_cameras.append(updated_camera)
+
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={
+                "entity_type": ENTITY_TYPE_WEATHERCAM,
+                "cameras": updated_cameras,
+            },
+        )
+
+        return self.async_create_entry(title="", data={})
+
+    async def _show_weathercam_management_form(self) -> FlowResult:
+        """
+        Show form for managing weathercam presets.
+
+        Returns:
+            Flow result with management form.
+
+        """
+        existing_cameras = self.config_entry.data.get("cameras", [])
+
+        data_file = Path(__file__).parent / "data" / "weathercam_data.json"
+        weathercam_data = await self.hass.async_add_executor_job(
+            _load_weathercam_data_sync, data_file
+        )
+
+        preset_options, current_presets = _build_preset_options(
+            existing_cameras, weathercam_data
+        )
+
+        if not preset_options:
+            return self.async_create_entry(title="", data={})
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "presets", default=current_presets
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=preset_options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="manage_weathercams",
+            data_schema=schema,
+            description_placeholders={
+                "description": "Select which camera presets to keep. "
+                "Unchecked items will be removed."
+            },
+        )
+
+
+def _build_preset_options(
+    cameras: list[dict], weathercam_data: dict
+) -> tuple[list[selector.SelectOptionDict], list[str]]:
     """
-    Return options flow handler for this config entry.
-
-    Must be a regular function (not coroutine) that returns an
-    OptionsFlow handler instance so Home Assistant can expose the
-    "Options" button for existing entries.
+    Build preset options for selection form.
 
     Returns:
-        DigitrafficOptionsFlow instance.
+        Tuple of (preset options, current preset IDs).
 
     """
-    return DigitrafficOptionsFlow(config_entry)
+    preset_options = []
+    current_presets = []
+
+    for camera in cameras:
+        camera_id = camera.get("camera_id", "")
+        camera_name = camera.get("camera_name", camera_id)
+        camera_data = weathercam_data.get(camera_id, {})
+        all_presets = camera_data.get("presets", [])
+
+        for preset_id in camera.get("presets", []):
+            preset_info = next((p for p in all_presets if p["id"] == preset_id), None)
+            if preset_info:
+                preset_name = preset_info.get("presentationName", preset_id)
+                label = f"{camera_name} - {preset_name}"
+            else:
+                label = f"{camera_name} - {preset_id}"
+
+            preset_options.append(
+                selector.SelectOptionDict(value=preset_id, label=label)
+            )
+            current_presets.append(preset_id)
+
+    return preset_options, current_presets
+
+
+def _load_weathercam_data_sync(data_file: Path) -> dict:
+    """
+    Load weathercam data synchronously for options flow.
+
+    Args:
+        data_file: Path to weathercam data file.
+
+    Returns:
+        Weathercam data dictionary.
+
+    """
+    with data_file.open(encoding="utf-8") as f:
+        return json.load(f)

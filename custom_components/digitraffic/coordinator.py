@@ -80,8 +80,16 @@ class DigitrafficDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Filter by municipalities
             filtered_features = []
+            seen_situation_ids = set()  # Track unique situation IDs
+
             for feature in features:
                 properties = feature.get("properties", {})
+                situation_id = properties.get("situationId")
+
+                # Skip if we've already added this situation
+                if situation_id and situation_id in seen_situation_ids:
+                    continue
+
                 announcements = properties.get("announcements", [])
 
                 for ann in announcements:
@@ -99,6 +107,8 @@ class DigitrafficDataUpdateCoordinator(DataUpdateCoordinator):
                         or secondary_muni in self.municipalities
                     ):
                         filtered_features.append(feature)
+                        if situation_id:
+                            seen_situation_ids.add(situation_id)
                         break
 
         except Exception as err:
