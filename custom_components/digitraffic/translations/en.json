@@ -9,10 +9,10 @@
             },
             "traffic_messages": {
                 "title": "Configure Traffic Messages",
-                "description": "Configure which Finnish municipalities you want to monitor for traffic messages.",
+                "description": "Configure which Finnish municipalities and situation types you want to monitor. Leave empty to monitor all.",
                 "data": {
                     "municipalities": "Municipalities (leave empty for all)",
-                    "include_raw_data": "Include raw data sensor (for advanced users)"
+                    "situation_types": "Situation Types (leave empty for all)"
                 }
             },
             "weathercam": {
@@ -61,7 +61,7 @@
                 "description": "Update configuration.",
                 "data": {
                     "municipalities": "Municipalities (leave empty for all)",
-                    "include_raw_data": "Include raw data sensor (for advanced users)"
+                    "situation_types": "Situation Types (leave empty for all)"
                 }
             }
         },

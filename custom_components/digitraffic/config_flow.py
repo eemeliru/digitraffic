@@ -82,11 +82,17 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # Check for duplicate configuration
             municipalities = user_input.get("municipalities", [])
-            situation_types = user_input.get("situation_types", SITUATION_TYPES)
+            situation_types = user_input.get("situation_types", [])
+
+            # Normalize: empty list means all types (None)
+            if not situation_types:
+                situation_types = None
 
             # Sort for consistent comparison
             sorted_municipalities = sorted(municipalities)
-            sorted_situation_types = sorted(situation_types)
+            sorted_situation_types = (
+                sorted(situation_types) if situation_types else None
+            )
 
             # Check existing entries
             for entry in self._async_current_entries():
@@ -97,11 +103,15 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "municipalities", entry.data.get("municipalities", [])
                         )
                     )
-                    existing_situation_types = sorted(
-                        entry.options.get(
-                            "situation_types",
-                            entry.data.get("situation_types", SITUATION_TYPES),
-                        )
+                    existing_types = entry.options.get(
+                        "situation_types",
+                        entry.data.get("situation_types", None),
+                    )
+                    # Normalize: empty list or None means all types
+                    if not existing_types:
+                        existing_types = None
+                    existing_situation_types = (
+                        sorted(existing_types) if existing_types else None
                     )
 
                     # Check if configuration matches
@@ -132,9 +142,7 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(
-                    "situation_types", default=SITUATION_TYPES
-                ): selector.SelectSelector(
+                vol.Optional("situation_types", default=[]): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=situation_type_options,
                         multiple=True,
@@ -146,8 +154,8 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         description_placeholders = {
             "info": (
-                "Each service monitors selected municipalities and creates "
-                "one sensor per traffic message."
+                "Each service creates one sensor per active traffic message. "
+                "Leave municipalities empty to monitor all of Finland."
             )
         }
 
@@ -193,7 +201,7 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Generate default name suggestion
         municipalities = self._traffic_config.get("municipalities", [])
-        situation_types = self._traffic_config.get("situation_types", SITUATION_TYPES)
+        situation_types = self._traffic_config.get("situation_types", [])
 
         # Build default title from municipalities and situation types
         if municipalities:
@@ -202,9 +210,11 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 muni_part = f"{len(municipalities)} municipalities"
         else:
-            muni_part = "All municipalities"
+            muni_part = "Finland"
 
-        if len(situation_types) == 1:
+        if not situation_types:
+            type_part = "All types"
+        elif len(situation_types) == 1:
             type_part = SITUATION_TYPE_LABELS[situation_types[0]]
         elif len(situation_types) == len(SITUATION_TYPES):
             type_part = "All types"
@@ -532,8 +542,10 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Pre-populate form with current values
         current_municipalities = entry.data.get("municipalities", [])
-        current_situation_types = entry.data.get("situation_types", SITUATION_TYPES)
-        current_include_raw = entry.data.get("include_raw_data", False)
+        current_situation_types = entry.data.get("situation_types", [])
+        # If None, treat as empty list for the form
+        if current_situation_types is None:
+            current_situation_types = []
 
         situation_type_options = [
             {"value": st, "label": SITUATION_TYPE_LABELS[st]} for st in SITUATION_TYPES
@@ -559,9 +571,6 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(
-                    "include_raw_data", default=current_include_raw
-                ): selector.BooleanSelector(),
             }
         )
 
@@ -831,8 +840,11 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
         )
         current_situation_types = self.config_entry.options.get(
             "situation_types",
-            self.config_entry.data.get("situation_types", SITUATION_TYPES),
+            self.config_entry.data.get("situation_types", []),
         )
+        # If None, treat as empty list for the form
+        if current_situation_types is None:
+            current_situation_types = []
 
         situation_type_options = [
             {"value": st, "label": SITUATION_TYPE_LABELS[st]} for st in SITUATION_TYPES
