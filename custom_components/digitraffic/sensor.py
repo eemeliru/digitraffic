@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
     ENTITY_TYPE_TRAFFIC_MESSAGES,
     ENTITY_TYPE_WEATHERCAM,
+    LOGGER,
     SITUATION_TYPE_LABELS,
 )
 
@@ -70,16 +71,17 @@ def _async_setup_traffic_message_sensors(
 
         # Get existing message sensor unique IDs for this entry
         existing_sensors = {}
+        entry_prefix = f"{entry.entry_id}_tm_"
         for entity_entry in er.async_entries_for_config_entry(
             entity_reg, entry.entry_id
         ):
             # Check if this is a traffic message sensor
             if entity_entry.domain == "sensor" and entity_entry.unique_id.startswith(
-                "digitraffic_GUID"
+                entry_prefix
             ):
                 # Extract situation_id from unique_id
-                # (format: digitraffic_GUID...)
-                situation_id = entity_entry.unique_id.replace("digitraffic_", "", 1)
+                # (format: {entry_id}_tm_{situation_id})
+                situation_id = entity_entry.unique_id.replace(entry_prefix, "", 1)
                 existing_sensors[situation_id] = entity_entry.entity_id
 
         # Remove sensors for messages that are no longer active
@@ -94,14 +96,35 @@ def _async_setup_traffic_message_sensors(
         new_entities = []
         new_ids = current_situation_ids - set(existing_sensors.keys())
 
+        # Get all existing unique IDs across all entries to avoid collisions
+        all_existing_unique_ids = {
+            entity_entry.unique_id
+            for entity_entry in entity_reg.entities.values()
+            if entity_entry.domain == "sensor"
+        }
+
         for msg in messages:
             situation_id = msg.get("properties", {}).get("situationId")
-            if situation_id in new_ids:
+            if situation_id and situation_id in new_ids:
+                # Check if unique_id would already exist
+                unique_id = f"{entry.entry_id}_tm_{situation_id}"
+                if unique_id in all_existing_unique_ids:
+                    # Skip this sensor - it already exists elsewhere
+                    LOGGER.warning(
+                        "Skipping sensor creation for situation %s - "
+                        "unique_id %s already exists",
+                        situation_id,
+                        unique_id,
+                    )
+                    continue
+
                 sensor = DigitrafficTrafficMessageSensor(
                     coordinator, entry, msg, situation_id
                 )
                 new_entities.append(sensor)
                 data["active_message_sensors"][situation_id] = sensor
+                # Track that we're creating this unique_id
+                all_existing_unique_ids.add(unique_id)
 
         if new_entities:
             async_add_entities(new_entities)
@@ -111,6 +134,9 @@ def _async_setup_traffic_message_sensors(
 
     # Initial entity setup
     _async_add_remove_entities()
+
+    # Add coordinator listener to clean up entities on each update
+    coordinator.async_add_listener(_async_add_remove_entities)
 
 
 async def _async_setup_weathercam_sensors(
@@ -151,8 +177,9 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
         self._situation_id = situation_id
         self._entry_id = entry.entry_id
 
-        # Generate unique ID based on situation ID
-        self._attr_unique_id = f"digitraffic_tm_{situation_id}"
+        # Generate unique ID based on entry and situation ID
+        # This ensures same message in different services gets different unique_id
+        self._attr_unique_id = f"{entry.entry_id}_tm_{situation_id}"
 
         # Extract initial message details
         properties = message_data.get("properties", {})
@@ -209,7 +236,7 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
 
     @staticmethod
     def _extract_coordinates(
-        geometry: dict[str, Any],
+        geometry: dict[str, Any] | None,
     ) -> tuple[float | None, float | None]:
         """
         Extract latitude and longitude from geometry.
@@ -218,6 +245,8 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
             Tuple of (latitude, longitude) or (None, None) if not available.
 
         """
+        if not geometry:
+            return None, None
         coordinates = geometry.get("coordinates", [])
         if not coordinates or len(coordinates) == 0:
             return None, None
@@ -322,11 +351,14 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
         municipalities, road, direction = self._extract_location_info(announcements)
 
         # Build GeoJSON with minimal required fields
+        geometry_type = geometry.get("type", "LineString") if geometry else "LineString"
+        geometry_coords = geometry.get("coordinates", []) if geometry else []
+
         geojson = {
             "type": "Feature",
             "geometry": {
-                "type": geometry.get("type", "LineString"),
-                "coordinates": geometry.get("coordinates", []),
+                "type": geometry_type,
+                "coordinates": geometry_coords,
             },
             "properties": {
                 "title": title,
