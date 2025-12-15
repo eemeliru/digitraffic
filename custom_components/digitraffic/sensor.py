@@ -69,6 +69,11 @@ def _async_setup_traffic_message_sensors(
             if msg.get("properties", {}).get("situationId")
         }
 
+        LOGGER.debug(
+            "Traffic message sync: %d active messages from API",
+            len(current_situation_ids),
+        )
+
         # Get existing message sensor unique IDs for this entry
         existing_sensors = {}
         entry_prefix = f"{entry.entry_id}_tm_"
@@ -84,47 +89,57 @@ def _async_setup_traffic_message_sensors(
                 situation_id = entity_entry.unique_id.replace(entry_prefix, "", 1)
                 existing_sensors[situation_id] = entity_entry.entity_id
 
+        LOGGER.debug(
+            "Traffic message sync: %d existing sensors in registry",
+            len(existing_sensors),
+        )
+
         # Remove sensors for messages that are no longer active
         removed_ids = set(existing_sensors.keys()) - current_situation_ids
         for situation_id in removed_ids:
             entity_id = existing_sensors[situation_id]
-            entity_reg.async_remove(entity_id)
+            LOGGER.debug(
+                "Removing inactive traffic message sensor: %s (situation_id: %s)",
+                entity_id,
+                situation_id,
+            )
+            try:
+                # Remove from entity registry - this will delete the entity
+                entity_reg.async_remove(entity_id)
+                LOGGER.debug("Successfully removed entity %s from registry", entity_id)
+            except (KeyError, ValueError) as err:
+                LOGGER.warning("Failed to remove entity %s: %s", entity_id, err)
+
+            # Clean up from active sensors dict
             if situation_id in data["active_message_sensors"]:
                 del data["active_message_sensors"][situation_id]
 
-        # Add sensors for new messages
+        # Add/restore sensors for all current messages
         new_entities = []
-        new_ids = current_situation_ids - set(existing_sensors.keys())
-
-        # Get all existing unique IDs across all entries to avoid collisions
-        all_existing_unique_ids = {
-            entity_entry.unique_id
-            for entity_entry in entity_reg.entities.values()
-            if entity_entry.domain == "sensor"
-        }
 
         for msg in messages:
             situation_id = msg.get("properties", {}).get("situationId")
-            if situation_id and situation_id in new_ids:
-                # Check if unique_id would already exist
-                unique_id = f"{entry.entry_id}_tm_{situation_id}"
-                if unique_id in all_existing_unique_ids:
-                    # Skip this sensor - it already exists elsewhere
-                    LOGGER.warning(
-                        "Skipping sensor creation for situation %s - "
-                        "unique_id %s already exists",
-                        situation_id,
-                        unique_id,
-                    )
-                    continue
+            if not situation_id:
+                continue
 
-                sensor = DigitrafficTrafficMessageSensor(
-                    coordinator, entry, msg, situation_id
+            # Check if sensor already exists in our active tracking
+            if situation_id in data["active_message_sensors"]:
+                # Already tracked and added, skip
+                continue
+
+            # Check if it exists in the registry but not yet added to platform
+            if situation_id in existing_sensors:
+                # Entity exists in registry, need to restore it to platform
+                LOGGER.debug(
+                    "Restoring existing sensor for situation_id: %s", situation_id
                 )
-                new_entities.append(sensor)
-                data["active_message_sensors"][situation_id] = sensor
-                # Track that we're creating this unique_id
-                all_existing_unique_ids.add(unique_id)
+
+            # Create/restore the sensor entity
+            sensor = DigitrafficTrafficMessageSensor(
+                coordinator, entry, msg, situation_id
+            )
+            new_entities.append(sensor)
+            data["active_message_sensors"][situation_id] = sensor
 
         if new_entities:
             async_add_entities(new_entities)
