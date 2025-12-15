@@ -1,46 +1,99 @@
-# Notice
+# Digitraffic for Home Assistant
 
-The component and platforms in this repository are not meant to be used by a
-user, but as a "blueprint" that custom component developers can build
-upon, to make more awesome stuff.
+[![GitHub Release][releases-shield]][releases]
+[![License][license-shield]](LICENSE)
+[![hacs][hacsbadge]][hacs]
 
-HAVE FUN! 😎
+**Integration is in early development phase and everything is subject to change.**
 
-## Why?
+A Home Assistant custom integration that provides real-time traffic information from Finland's [Digitraffic](https://www.digitraffic.fi/) service. Monitor traffic announcements, road works, weather cameras, and more directly in your Home Assistant dashboard.
 
-This is simple, by having custom_components look (README + structure) the same
-it is easier for developers to help each other and for users to start using them.
+> **Note**: This is an unofficial community-developed integration and is not affiliated with or endorsed by Digitraffic or Fintraffic.
 
-If you are a developer and you want to add things to this "blueprint" that you think more
-developers will have use for, please open a PR to add it :)
+## Features
 
-## What?
+- **Traffic Messages**: Real-time traffic announcements, road works, weight restrictions, and exempted transport notifications
+- **Weather Cameras**: Live road weather camera images from across Finland
+- **Municipality Filtering**: Filter traffic messages by specific Finnish municipalities
+- **Situation Type Filtering**: Choose which types of traffic events to monitor
+- **Dynamic Entity Management**: Traffic message sensors are automatically created and removed as incidents appear and clear
 
-This repository contains multiple files, here is a overview:
+## Installation
 
-File | Purpose | Documentation
--- | -- | --
-`.devcontainer.json` | Used for development/testing with Visual Studio Code. | [Documentation](https://code.visualstudio.com/docs/remote/containers)
-`.github/ISSUE_TEMPLATE/*.yml` | Templates for the issue tracker | [Documentation](https://help.github.com/en/github/building-a-strong-community/configuring-issue-templates-for-your-repository)
-`custom_components/integration_blueprint/*` | Integration files, this is where everything happens. | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)
-`CONTRIBUTING.md` | Guidelines on how to contribute. | [Documentation](https://help.github.com/en/github/building-a-strong-community/setting-guidelines-for-repository-contributors)
-`LICENSE` | The license file for the project. | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository)
-`README.md` | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)
-`requirements.txt` | Python packages used for development/lint/testing this integration. | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
+### HACS (Recommended)
 
-## How?
+1. Open HACS in Home Assistant
+2. Click on "Integrations"
+3. Click the three dots in the top right corner and select "Custom repositories"
+4. Add `https://github.com/eemeliru/digitraffic` as repository and select "Integration" as category
+5. Click "Install"
+6. Restart Home Assistant
 
-1. Create a new repository in GitHub, using this repository as a template by clicking the "Use this template" button in the GitHub UI.
-1. Open your new repository in Visual Studio Code devcontainer (Preferably with the "`Dev Containers: Clone Repository in Named Container Volume...`" option).
-1. Rename all instances of the `integration_blueprint` to `custom_components/<your_integration_domain>` (e.g. `custom_components/awesome_integration`).
-1. Rename all instances of the `Integration Blueprint` to `<Your Integration Name>` (e.g. `Awesome Integration`).
-1. Run the `scripts/develop` to start HA and test out your new integration.
+### Manual Installation
 
-## Next steps
+1. Copy the `custom_components/digitraffic` folder to your Home Assistant's `custom_components` directory
+2. Restart Home Assistant
 
-These are some next steps you may want to look into:
-- Add tests to your integration, [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component) can help you get started.
-- Add brand images (logo/icon) to https://github.com/home-assistant/brands.
-- Create your first release.
-- Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).
-- Submit your integration to [HACS](https://hacs.xyz/docs/publish/start).
+## Configuration
+
+### Via UI (Recommended)
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search for "Digitraffic"
+4. Choose the service type:
+   - **Traffic Messages**: Monitor road traffic incidents and announcements
+   - **Weathercams**: View live road camera images
+
+#### Traffic Messages Setup
+
+1. **Select municipalities**: Choose one or more municipalities to monitor, or leave empty to monitor all of Finland
+2. **Select situation types**: Choose which types of incidents to track:
+   - Traffic Announcements
+   - Road Works
+   - Weight Restrictions
+   - Exempted Transports
+
+#### Weather Camera Setup
+
+1. **Select a weather camera**: Choose from available road weather cameras across Finland
+2. The camera entity will provide live images updated every 10 minutes
+
+## Usage Examples
+
+Check out the [`examples/`](examples/) folder for practical examples on how to use this integration:
+
+- **automation-notifications.yaml**: Example automations for traffic incident notifications
+- **map-card-example.yaml**: Example dashboard card configuration for displaying traffic data on a map
+
+These examples will help you get started with setting up automations and visualizations for your traffic data.
+
+## Data Attribution
+
+Data provided by Fintraffic / digitraffic.fi under CC 4.0 BY license.
+
+*Liikennetietojen lähde Fintraffic / digitraffic.fi, lisenssi CC 4.0 BY*
+
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## Support
+
+- [Report issues][issues]
+- [Request features][issues]
+- [Ask questions in Discussions](https://github.com/eemeliru/digitraffic/discussions)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+[releases-shield]: https://img.shields.io/github/release/eemeliru/digitraffic.svg
+[releases]: https://github.com/eemeliru/digitraffic/releases
+[license-shield]: https://img.shields.io/github/license/eemeliru/digitraffic.svg
+[hacs]: https://github.com/hacs/integration
+[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
+[issues]: https://github.com/eemeliru/digitraffic/issues
