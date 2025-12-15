@@ -1,30 +1,38 @@
 # Automation: Notify on New Traffic Messages
 #
-# This automation monitors a specific traffic message service (by municipality)
-# and sends a mobile notification when a new message is detected.
+# This automation monitors Digitraffic traffic message sensors and sends
+# a mobile notification when a new message is detected.
 #
 # Prerequisites:
 # 1. Home Assistant mobile app installed on your device
-# 2. A configured Digitraffic traffic message service for your municipality
+# 2. A configured Digitraffic traffic message service
 # 3. Mobile notifications enabled in the app
-# 4. Find your service device ID in Developer Tools → States → look for device_id
-#    or in Settings → Devices & Services → Digitraffic → Your Service
 
 # ============================================================================
-# Example 1: Basic Notification for Specific Service
+# Example 1: Monitor Specific Service by Device
 # ============================================================================
+# This monitors only sensors from a specific Digitraffic service device.
+# Replace "YOUR_DEVICE_ID" with your actual device ID from the service.
+# Find it in: Settings → Devices & Services → Digitraffic → Your Service → Device ID
 
 automation:
-  - alias: "Traffic: Notify New Digitraffic Traffic Message"
-    description: "Send notification when any new traffic message appears."
+  - alias: "Traffic: Notify New Traffic Messages from My Service"
+    description: "Send notification when new traffic message appears in my monitored area."
 
     trigger:
-      # Trigger when any digitraffic sensor becomes active
-      - platform: state
-        entity_id: sensor.digitraffic_guid*
-        to: "active"
+      # Trigger when entities are added/updated on the specific device
+      - platform: event
+        event_type: entity_registry_updated
+        event_data:
+          action: create
 
     condition:
+      # Check if the entity is from our Digitraffic service device
+      - condition: template
+        value_template: >
+          {{ trigger.event.data.entity_id is defined
+             and trigger.event.data.entity_id.startswith('sensor.digitraffic_tm_')
+             and device_id(trigger.event.data.entity_id) == 'YOUR_DEVICE_ID' }}
       # Optional: Only notify during commute hours
       - condition: time
         after: "06:00:00"
@@ -35,52 +43,90 @@ automation:
         data:
           title: "🚨 New Traffic Message"
           message: >
-            {{ trigger.to_state.name }}
+            {{ states[trigger.event.data.entity_id].name }}
 
-            Location: {{ state_attr(trigger.entity_id, 'municipalities') }}
-            Type: {{ state_attr(trigger.entity_id, 'situation_type_label') }}
+            Location: {{ state_attr(trigger.event.data.entity_id, 'municipalities') }}
+            Type: {{ state_attr(trigger.event.data.entity_id, 'situation_type_label') }}
 
-            {{ state_attr(trigger.entity_id, 'description') }}
+            {{ state_attr(trigger.event.data.entity_id, 'description') }}
 
 ---
 
 # ============================================================================
-# Example 2: Monitor Specific Service with Situation Type Filter
+# Example 2: Monitor by Service Name
 # ============================================================================
+# This monitors sensors by filtering on the service device name.
+# Useful when you know the exact service name.
 
 automation:
-  - alias: "Traffic: Notify Traffic Announcements from Espoo Service"
-    description: "Notify only about Traffic Announcements from Espoo service"
+  - alias: "Traffic: Notify Helsinki Service Messages"
+    description: "Notify about traffic messages from Helsinki service"
 
     trigger:
-      - platform: state
-        entity_id: sensor.digitraffic_guid*
-        to: "active"
+      - platform: event
+        event_type: entity_registry_updated
+        event_data:
+          action: create
 
     condition:
-      # Filter by service name
-      # Only trigger for sensors from a specific service
-      # Replace the service name with your actual service name
-      # Default format: "Traffic: {Municipality} - {Types}"
-      # Example: "Traffic: Helsinki - All types"
+      # Check if it's a digitraffic sensor from the specific service
       - condition: template
         value_template: >
-          {{ device_attr(device_id(trigger.entity_id), 'name') == 'Traffic: Espoo' }}
-      # And only trigger for Traffic Announcements
-      - condition: template
-        value_template: >
-          {{ state_attr(trigger.entity_id, 'situation_type_label') == 'Traffic Announcement' }}
+          {{ trigger.event.data.entity_id is defined
+             and trigger.event.data.entity_id.startswith('sensor.digitraffic_tm_')
+             and device_attr(device_id(trigger.event.data.entity_id), 'name') == 'Traffic: Helsinki - All types' }}
 
     action:
       - service: notify.mobile_app_your_phone
         data:
-          title: "⚠️ Traffic Announcement"
+          title: "⚠️ Helsinki Traffic Alert"
           message: >
-            {{ trigger.to_state.name }}
+            {{ states[trigger.event.data.entity_id].name }}
 
-            📍 {{ state_attr(trigger.entity_id, 'municipalities') }}
-            🛣️ Road {{ state_attr(trigger.entity_id, 'road') }}
+            📍 {{ state_attr(trigger.event.data.entity_id, 'municipalities') }}
+            🛣️ Road {{ state_attr(trigger.event.data.entity_id, 'road') }}
 
-            {{ state_attr(trigger.entity_id, 'description') }}
+            {{ state_attr(trigger.event.data.entity_id, 'description') }}
+
+---
+
+# ============================================================================
+# Example 3: Filter by Device and Situation Type
+# ============================================================================
+# Monitor a specific service and only notify for certain incident types.
+
+automation:
+  - alias: "Traffic: Notify Road Works from My Service"
+    description: "Send notification only for Road Work messages from my service"
+
+    trigger:
+      - platform: event
+        event_type: entity_registry_updated
+        event_data:
+          action: create
+
+    condition:
+      # Check if it's a digitraffic sensor from our device
+      - condition: template
+        value_template: >
+          {{ trigger.event.data.entity_id is defined
+             and trigger.event.data.entity_id.startswith('sensor.digitraffic_tm_')
+             and device_id(trigger.event.data.entity_id) == 'YOUR_DEVICE_ID' }}
+      # Only trigger for Road Works
+      - condition: template
+        value_template: >
+          {{ state_attr(trigger.event.data.entity_id, 'situation_type') == 'ROAD_WORK' }}
+
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "🚧 Road Work Alert"
+          message: >
+            {{ states[trigger.event.data.entity_id].name }}
+
+            📍 {{ state_attr(trigger.event.data.entity_id, 'location_description') }}
+            ⏰ {{ state_attr(trigger.event.data.entity_id, 'time_and_duration') }}
+
+            {{ state_attr(trigger.event.data.entity_id, 'description') }}
 
 ---
