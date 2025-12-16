@@ -1,4 +1,4 @@
-# Digitraffic for Home Assistant
+# Digitraffic Custom Component for Home Assistant
 
 [![GitHub Release][releases-shield]][releases]
 [![License][license-shield]](LICENSE)
@@ -6,17 +6,20 @@
 
 **Integration is in early development phase and everything is subject to change.**
 
-A Home Assistant custom integration that provides real-time traffic information from Finland's [Digitraffic](https://www.digitraffic.fi/) service. Monitor traffic announcements, road works, weather cameras, and more directly in your Home Assistant dashboard.
+A Home Assistant custom integration that provides real-time traffic information from Finland's [Digitraffic](https://www.digitraffic.fi/) service. Monitor traffic messages and weather cameras directly from your Home Assistant dashboard.
 
 > **Note**: This is an unofficial community-developed integration and is not affiliated with or endorsed by Digitraffic or Fintraffic.
 
 ## Features
 
-- **Traffic Messages**: Real-time traffic announcements, road works, weight restrictions, and exempted transport notifications
-- **Weather Cameras**: Live road weather camera images from across Finland
-- **Municipality Filtering**: Filter traffic messages by specific Finnish municipalities
-- **Situation Type Filtering**: Choose which types of traffic events to monitor
-- **Dynamic Entity Management**: Traffic message sensors are automatically created and removed as incidents appear and clear
+### Traffic Messages 
+Real-time traffic announcements, road works, weight restrictions, and exempted transport notifications.
+- **Municipality Filtering**: Filter traffic messages by specific Finnish municipalities.
+- **Situation Type Filtering**: Choose which types of traffic events to monitor.
+- **Dynamic Entity Management**: Traffic message sensors are automatically created and removed as incidents appear and clear.
+
+### Weather Cameras 
+Live _(refreshing every 10mins)_ road weather camera images from across Finland.
 
 ## Installation
 
@@ -36,7 +39,9 @@ A Home Assistant custom integration that provides real-time traffic information 
 
 ## Configuration
 
-### Via UI (Recommended)
+_YAML configuration isn't tested or supported._
+
+### UI
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
@@ -56,8 +61,10 @@ A Home Assistant custom integration that provides real-time traffic information 
 
 #### Weather Camera Setup
 
-1. **Select a weather camera**: Choose from available road weather cameras across Finland
-2. The camera entity will provide live images updated every 10 minutes
+1. **Select municipality**: Choose municipality where wanted weather camera is located.
+2. **Select wanted location**: Choose from available road weather cameras in selected municipality.
+3. **Select camera view**: Choose one or more camera views from available options.
+4. The camera entity/entities will provide live images updated every 10 minutes.
 
 ## Usage Examples
 
