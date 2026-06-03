@@ -1,4 +1,4 @@
-"""BlueprintEntity class."""
+"""DigitrafficEntity class."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .coordinator import DigitrafficDataUpdateCoordinator
 
 
 class DigitrafficEntity(CoordinatorEntity[DigitrafficDataUpdateCoordinator]):
-    """BlueprintEntity class."""
+    """DigitrafficEntity class."""
 
     _attr_attribution = ATTRIBUTION
 
