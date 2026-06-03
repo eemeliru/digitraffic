@@ -16,9 +16,10 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from .const import ATTRIBUTION, DIGITRAFFIC_USER, DOMAIN, ENTITY_TYPE_WEATHERCAM, LOGGER
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from .data import DigitrafficConfigEntry
 
 SCAN_INTERVAL = timedelta(minutes=10)
 
@@ -40,12 +41,11 @@ def _load_weathercam_data(data_file: Path) -> dict:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DigitrafficConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Digitraffic weathercam cameras."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    entity_type = data.get("entity_type")
+    entity_type = entry.runtime_data.entity_type
 
     # Only set up cameras for weathercam entries
     if entity_type != ENTITY_TYPE_WEATHERCAM:
@@ -95,7 +95,7 @@ def _get_expected_preset_ids(cameras_config: list[dict]) -> set[str]:
 
 
 def _cleanup_removed_entities(
-    hass: HomeAssistant, entry: ConfigEntry, expected_preset_ids: set[str]
+    hass: HomeAssistant, entry: DigitrafficConfigEntry, expected_preset_ids: set[str]
 ) -> None:
     """Remove entities that are no longer in the configuration."""
     entity_reg = er.async_get(hass)
@@ -117,7 +117,7 @@ def _cleanup_removed_entities(
 
 def _create_camera_entities(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DigitrafficConfigEntry,
     cameras_config: list[dict],
     weathercam_data: dict,
 ) -> list[DigitrafficWeathercamCamera]:
@@ -180,7 +180,7 @@ class DigitrafficWeathercamCamera(Camera):
     def __init__(
         self,
         hass: HomeAssistant,
-        entry: ConfigEntry,
+        entry: DigitrafficConfigEntry,
         camera_data: dict[str, Any],
     ) -> None:
         """Initialize the camera."""
@@ -195,10 +195,10 @@ class DigitrafficWeathercamCamera(Camera):
         self._image_url = self._preset.get("imageUrl", "")
         self._nearest_weather_station_id = camera_data.get("nearest_weather_station_id")
 
-        self._attr_unique_id = f"{entry.entry_id}_wc_{self._preset_id}"
+        self._attr_unique_id = f"{entry.entry_id}_wc_{self._preset_id.lower()}"
         preset_name = self._preset.get("presentationName", self._preset_id)
         self._attr_name = f"{self._camera_name} - {preset_name}"
-        self.entity_id = f"camera.digitraffic_wc_{self._preset_id}"
+        self.entity_id = f"camera.digitraffic_wc_{self._preset_id.lower()}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Digitraffic Weathercams",

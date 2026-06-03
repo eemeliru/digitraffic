@@ -5,9 +5,14 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .api import (
+    DigitrafficApiClientAuthenticationError,
+    DigitrafficApiClientError,
+)
 from .const import LOGGER
 
 if TYPE_CHECKING:
@@ -111,6 +116,10 @@ class DigitrafficDataUpdateCoordinator(DataUpdateCoordinator):
                             seen_situation_ids.add(situation_id)
                         break
 
+        except DigitrafficApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(exception) from exception
+        except DigitrafficApiClientError as exception:
+            raise UpdateFailed(exception) from exception
         except Exception as err:
             msg = f"Digitraffic API error: {err}"
             raise UpdateFailed(msg) from err
