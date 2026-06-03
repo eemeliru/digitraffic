@@ -10,9 +10,10 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from .data import DigitrafficConfigEntry
 
 from .const import (
     ATTRIBUTION,
@@ -29,31 +30,26 @@ _COORDINATE_PAIR_LENGTH = 2
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DigitrafficConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Digitraffic sensors and handle dynamic entity management."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    entity_type = data.get("entity_type", ENTITY_TYPE_TRAFFIC_MESSAGES)
+    entity_type = entry.runtime_data.entity_type
 
     # Route to appropriate sensor setup based on entity type
     if entity_type == ENTITY_TYPE_TRAFFIC_MESSAGES:
-        _async_setup_traffic_message_sensors(hass, entry, async_add_entities, data)
+        _async_setup_traffic_message_sensors(hass, entry, async_add_entities)
     elif entity_type == ENTITY_TYPE_WEATHERCAM:
-        await _async_setup_weathercam_sensors(hass, entry, async_add_entities, data)
+        await _async_setup_weathercam_sensors(hass, entry, async_add_entities)
 
 
 def _async_setup_traffic_message_sensors(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DigitrafficConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    data: dict[str, Any],
 ) -> None:
     """Set up traffic message sensors - one sensor per message."""
-    coordinator = data["coordinator"]
-
-    # Track currently active message sensors by situation_id
-    data["active_message_sensors"] = {}
+    coordinator = entry.runtime_data.coordinator
 
     def _async_add_remove_entities() -> None:
         """Dynamically add/remove sensors based on active traffic messages."""
@@ -104,15 +100,14 @@ def _async_setup_traffic_message_sensors(
                 situation_id,
             )
             try:
-                # Remove from entity registry - this will delete the entity
                 entity_reg.async_remove(entity_id)
                 LOGGER.debug("Successfully removed entity %s from registry", entity_id)
             except (KeyError, ValueError) as err:
                 LOGGER.warning("Failed to remove entity %s: %s", entity_id, err)
 
             # Clean up from active sensors dict
-            if situation_id in data["active_message_sensors"]:
-                del data["active_message_sensors"][situation_id]
+            if situation_id in entry.runtime_data.active_message_sensors:
+                del entry.runtime_data.active_message_sensors[situation_id]
 
         # Add/restore sensors for all current messages
         new_entities = []
@@ -123,13 +118,11 @@ def _async_setup_traffic_message_sensors(
                 continue
 
             # Check if sensor already exists in our active tracking
-            if situation_id in data["active_message_sensors"]:
-                # Already tracked and added, skip
+            if situation_id in entry.runtime_data.active_message_sensors:
                 continue
 
             # Check if it exists in the registry but not yet added to platform
             if situation_id in existing_sensors:
-                # Entity exists in registry, need to restore it to platform
                 LOGGER.debug(
                     "Restoring existing sensor for situation_id: %s", situation_id
                 )
@@ -139,13 +132,13 @@ def _async_setup_traffic_message_sensors(
                 coordinator, entry, msg, situation_id
             )
             new_entities.append(sensor)
-            data["active_message_sensors"][situation_id] = sensor
+            entry.runtime_data.active_message_sensors[situation_id] = sensor
 
         if new_entities:
             async_add_entities(new_entities)
 
     # Store the callback for future use during reconfiguration
-    data["add_entities_callback"] = _async_add_remove_entities
+    entry.runtime_data.add_entities_callback = _async_add_remove_entities
 
     # Initial entity setup
     _async_add_remove_entities()
@@ -156,9 +149,8 @@ def _async_setup_traffic_message_sensors(
 
 async def _async_setup_weathercam_sensors(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DigitrafficConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    data: dict[str, Any],
 ) -> None:
     """
     Set up weathercam sensors.
@@ -182,7 +174,7 @@ class DigitrafficTrafficMessageSensor(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: Any,
-        entry: ConfigEntry,
+        entry: DigitrafficConfigEntry,
         message_data: dict[str, Any],
         situation_id: str,
     ) -> None:

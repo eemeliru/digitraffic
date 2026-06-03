@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.loader import Integration
 
@@ -20,6 +21,9 @@ type DigitrafficConfigEntry = ConfigEntry[DigitrafficData]
 class DigitrafficData:
     """Data for the Digitraffic integration."""
 
-    client: DigitrafficApiClient
-    coordinator: DigitrafficDataUpdateCoordinator
-    integration: Integration
+    entity_type: str
+    client: DigitrafficApiClient | None = None
+    coordinator: DigitrafficDataUpdateCoordinator | None = None
+    integration: Integration | None = None
+    active_message_sensors: dict[str, Any] = field(default_factory=dict)
+    add_entities_callback: Callable[[], None] | None = None
