@@ -1,0 +1,158 @@
+# Automation: Create persistent notification for new traffic messages
+#
+# This automation triggers whenever a new traffic message sensor is created
+# by the Digitraffic integration and creates a persistent notification with
+# the message details.
+#
+# Installation:
+# 1. Copy this automation to your Home Assistant automations.yaml file, or
+# 2. Add it through the UI: Settings → Automations & Scenes → Create Automation → ⋮ (menu) → Edit in YAML
+
+automation:
+  - alias: "Digitraffic: New Traffic Message Notification"
+    description: "Create persistent notification when new traffic message is received"
+
+    # Trigger when a new entity is added to the entity registry
+    trigger:
+      - platform: event
+        event_type: entity_registry_updated
+        event_data:
+          action: create
+
+    # Only proceed if it's a Digitraffic traffic message sensor
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.event.data.entity_id is defined and
+             trigger.event.data.entity_id.startswith('sensor.digitraffic_tm_') }}
+
+    action:
+      # Wait a moment to ensure entity state is available
+      - delay:
+          seconds: 2
+
+      # Create persistent notification with traffic message details
+      - service: persistent_notification.create
+        data:
+          title: "🚦 New Traffic Message"
+          message: >
+            **{{ state_attr(trigger.event.data.entity_id, 'title') or 'Traffic Message' }}**
+
+            {% if state_attr(trigger.event.data.entity_id, 'description') %}
+            {{ state_attr(trigger.event.data.entity_id, 'description') }}
+            {% endif %}
+
+            **Type:** {{ state_attr(trigger.event.data.entity_id, 'situation_type_label') or 'Unknown' }}
+
+            {% if state_attr(trigger.event.data.entity_id, 'municipalities') %}
+            **Location:** {{ state_attr(trigger.event.data.entity_id, 'municipalities') }}
+            {% endif %}
+
+            {% if state_attr(trigger.event.data.entity_id, 'road') %}
+            **Road:** {{ state_attr(trigger.event.data.entity_id, 'road') }}
+            {% if state_attr(trigger.event.data.entity_id, 'direction') %}
+            ({{ state_attr(trigger.event.data.entity_id, 'direction') }})
+            {% endif %}
+            {% endif %}
+
+            {% if state_attr(trigger.event.data.entity_id, 'release_time') %}
+            **Released:** {{ state_attr(trigger.event.data.entity_id, 'release_time') | as_datetime | as_local }}
+            {% endif %}
+
+            *Situation ID: {{ state_attr(trigger.event.data.entity_id, 'situation_id') }}*
+          notification_id: "digitraffic_{{ state_attr(trigger.event.data.entity_id, 'situation_id') }}"
+
+    mode: parallel
+    max: 10
+
+
+# Advanced Example: Dismiss notification when traffic message clears
+#
+# This companion automation automatically dismisses the persistent notification
+# when the corresponding traffic message sensor is removed.
+
+  - alias: "Digitraffic: Clear Traffic Message Notification"
+    description: "Dismiss notification when traffic message is cleared/resolved"
+
+    trigger:
+      - platform: event
+        event_type: entity_registry_updated
+        event_data:
+          action: remove
+
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.event.data.entity_id is defined and
+             trigger.event.data.entity_id.startswith('sensor.digitraffic_tm_') }}
+
+    action:
+      # Extract situation_id from entity_id (format: sensor.digitraffic_tm_{situation_id})
+      - variables:
+          situation_id: "{{ trigger.event.data.entity_id.replace('sensor.digitraffic_tm_', '') }}"
+
+      # Dismiss the corresponding notification
+      - service: persistent_notification.dismiss
+        data:
+          notification_id: "digitraffic_{{ situation_id }}"
+
+    mode: parallel
+    max: 10
+
+
+# Variations and Additional Examples:
+#
+# 1. FILTER BY SITUATION TYPE
+#    Add this condition to only notify for specific types of messages:
+#
+#    - condition: template
+#      value_template: >
+#        {{ state_attr(trigger.event.data.entity_id, 'situation_type_label')
+#           in ['Road Work', 'Traffic Announcement'] }}
+#
+#
+# 2. FILTER BY MUNICIPALITY
+#    Only notify for messages in specific municipalities:
+#
+#    - condition: template
+#      value_template: >
+#        {{ 'Helsinki' in state_attr(trigger.event.data.entity_id, 'municipalities') or
+#           'Espoo' in state_attr(trigger.event.data.entity_id, 'municipalities') }}
+#
+#
+# 3. SEND TO MOBILE APP
+#    Replace persistent_notification.create with mobile app notification:
+#
+#    - service: notify.mobile_app_your_phone
+#      data:
+#        title: "🚦 {{ state_attr(trigger.event.data.entity_id, 'title') }}"
+#        message: "{{ state_attr(trigger.event.data.entity_id, 'description') }}"
+#        data:
+#          tag: "digitraffic_{{ state_attr(trigger.event.data.entity_id, 'situation_id') }}"
+#          group: "digitraffic_traffic"
+#          notification_icon: mdi:traffic-cone
+#
+#
+# 4. INCLUDE MAP LINK
+#    Add a clickable map link if coordinates are available:
+#
+#    {% set lat = state_attr(trigger.event.data.entity_id, 'latitude') %}
+#    {% set lon = state_attr(trigger.event.data.entity_id, 'longitude') %}
+#    {% if lat and lon %}
+#    [View on Map](https://www.google.com/maps?q={{ lat }},{{ lon }})
+#    {% endif %}
+#
+#
+# 5. LOG TO PERSISTENT HISTORY
+#    Use input_text or logger to keep a history of messages:
+#
+#    - service: logbook.log
+#      data:
+#        name: "Digitraffic Traffic Message"
+#        message: >
+#          {{ state_attr(trigger.event.data.entity_id, 'title') }} -
+#          {{ state_attr(trigger.event.data.entity_id, 'municipalities') }}
+#
+#
+# Attribution:
+# Data provided by Fintraffic / digitraffic.fi under CC 4.0 BY license.

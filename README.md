@@ -12,13 +12,13 @@ A Home Assistant custom integration that provides real-time traffic information 
 
 ## Features
 
-### Traffic Messages 
+### Traffic Messages
 Real-time traffic announcements, road works, weight restrictions, and exempted transport notifications.
 - **Municipality Filtering**: Filter traffic messages by specific Finnish municipalities.
 - **Situation Type Filtering**: Choose which types of traffic events to monitor.
 - **Dynamic Entity Management**: Traffic message sensors are automatically created and removed as incidents appear and clear.
 
-### Weather Cameras 
+### Weather Cameras
 Live _(refreshing every 10mins)_ road weather camera images from across Finland.
 
 ## Installation
@@ -70,10 +70,7 @@ _YAML configuration isn't tested or supported._
 
 Check out the [`examples/`](examples/) folder for practical examples on how to use this integration:
 
-- **automation-notifications.yaml**: Example automations for traffic incident notifications
-- **map-card-example.yaml**: Example dashboard card configuration for displaying traffic data on a map
-
-These examples will help you get started with setting up automations and visualizations for your traffic data.
+- **[Traffic Message Notifications](examples/traffic_message_notification.yaml)**: Create persistent notifications when new traffic messages are received
 
 ## Data Attribution
 

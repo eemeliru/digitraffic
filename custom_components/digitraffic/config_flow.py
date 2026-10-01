@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -432,9 +433,9 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     @staticmethod
-    async def _async_fetch_weathercam_data() -> dict[str, Any]:
+    def _load_weathercam_data_sync() -> dict[str, Any]:
         """
-        Load weathercam data from static JSON file.
+        Load weathercam data from static JSON file (sync helper).
 
         Returns:
             Dict containing weathercam data.
@@ -443,6 +444,17 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_path = Path(__file__).parent / "data" / "weathercam_data.json"
         with data_path.open(encoding="utf-8") as f:
             return json.load(f)
+
+    @staticmethod
+    async def _async_fetch_weathercam_data() -> dict[str, Any]:
+        """
+        Load weathercam data from static JSON file.
+
+        Returns:
+            Dict containing weathercam data.
+
+        """
+        return await asyncio.to_thread(DigitrafficConfigFlow._load_weathercam_data_sync)
 
     @staticmethod
     def _get_municipalities_with_cameras(cameras: dict[str, Any]) -> list[str]:
