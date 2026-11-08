@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 from .const import DIGITRAFFIC_USER
 
@@ -72,7 +72,7 @@ class DigitrafficApiClient:
             default_headers.update(headers)
 
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 response = await self._session.request(
                     method=method,
                     url=url,

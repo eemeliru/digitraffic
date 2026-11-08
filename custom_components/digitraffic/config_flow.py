@@ -32,7 +32,7 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
+        config_entry: config_entries.ConfigEntry,  # noqa: ARG004
     ) -> DigitrafficOptionsFlow:
         """
         Get the options flow for this handler.
@@ -41,7 +41,7 @@ class DigitrafficConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             DigitrafficOptionsFlow instance.
 
         """
-        return DigitrafficOptionsFlow(config_entry)
+        return DigitrafficOptionsFlow()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -809,10 +809,6 @@ class DigitrafficOptionsFlow(config_entries.OptionsFlow):
     This options flow allows the user to change municipalities and situation types.
     Options are saved to `entry.options`.
     """
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
